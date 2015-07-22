@@ -2,46 +2,41 @@
 
 namespace Doctrine\ODM\MongoDB\Tests\Functional\Ticket;
 
+use Doctrine\ODM\MongoDB\Mapping\ClassMetadata;
+use Doctrine\ODM\MongoDB\Mapping\Driver\YamlDriver;
+
+use Doctrine\Common\Annotations\AnnotationReader;
+use Doctrine\ODM\MongoDB\Mapping\Driver\AnnotationDriver;
 use Doctrine\ODM\MongoDB\Mapping\Annotations as ODM;
 
 class GH1174Test extends \Doctrine\ODM\MongoDB\Tests\BaseTest
 {
-    public function testDocumentPersisterDoesNotThrowStrategyUndefinedMessage()
-    {
-        $class = __NAMESPACE__ . '\GH1174Document';
+    /**
+     * @test
+     */
+    public function compareDrivers()
+    {   
+        if (!class_exists('Symfony\Component\Yaml\Yaml', true)) {
+            $this->markTestSkipped('This test requires the Symfony YAML component');
+        }   
 
-        $schemaManager = $this->dm->getSchemaManager();
-        $schemaManager->updateDocumentIndexes($class);
+        // Yaml driver
+        $ymlClass = __NAMESPACE__.'\YamlDriverGH1174Document';
+        $ymlMappingDriver = new YamlDriver(__DIR__ . DIRECTORY_SEPARATOR . 'yaml');
+        $metaFromYmlDriver = new ClassMetadata($ymlClass);
+        $ymlMappingDriver->loadMetadataForClass($ymlClass, $metaFromYmlDriver);
 
-        $repository = $this->dm->getRepository($class);
+        // Annotation driver
+        $annoClass = __NAMESPACE__ . '\GH1174Document';
+        $annoReader = new AnnotationReader();
+        $annoMappingDriver = new AnnotationDriver($annoReader);
+        $metaFromAnnoDriver = new ClassMetadata($annoClass);
+        $annoMappingDriver->loadMetadataForClass($annoClass, $metaFromAnnoDriver);
 
-        $this->assertCount(0, $repository->findAll());
+        $ymlFieldMapping = $metaFromYmlDriver->getFieldMapping('nodes');
+        $annoFieldMapping = $metaFromAnnoDriver->getFieldMapping('nodes');
 
-        // Create, persist and flush initial object
-        $doc1 = new GH1174Document();
-        $doc1->id = 1;
-        $doc1->name = 'foo';
-        $doc1->nodes = [
-            [ 'id' => '1' ],
-            [ 'id' => '2' ],
-        ];
-
-        $this->dm->persist($doc1);
-        $this->dm->flush();
-
-        $criteria = [ 
-            '$and' => [
-                ['name' => 'foo'],
-                ['nodes.id' => '1'],
-                ['nodes.id' => '2']
-            ]   
-        ];  
-
-        $doc1 = $repository->findOneBy($criteria);
-
-        $this->assertTrue($doc1 instanceof \Doctrine\ODM\MongoDB\Tests\Functional\Ticket\GH1174Document);
-
-        $this->assertCount(1, $repository->findAll());
+        self::assertEquals($ymlFieldMapping, $annoFieldMapping);
     }
 }
 
@@ -55,5 +50,14 @@ class GH1174Document
     public $name;
 
     /** @ODM\Collection */
+    public $nodes;
+}
+
+class YamlDriverGH1174Document
+{
+    public $id;
+
+    public $name;
+
     public $nodes;
 }

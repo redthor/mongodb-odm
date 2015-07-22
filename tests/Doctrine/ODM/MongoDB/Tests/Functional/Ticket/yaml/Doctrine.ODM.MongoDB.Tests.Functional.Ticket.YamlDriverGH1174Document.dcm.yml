@@ -1,0 +1,15 @@
+# This tests alternate syntax for defining embed/reference relations
+Doctrine\ODM\MongoDB\Tests\Functional\Ticket\YamlDriverGH1174Document:
+  type: document
+  collection: gh1147documents
+  fields:
+    id:
+      type: id
+      id: true
+      options:
+         type: string
+      strategy: none
+    name:
+      type: string
+    nodes:
+      type: collection
