@@ -23,8 +23,6 @@ namespace Doctrine\ODM\MongoDB\Types;
  * The Date type.
  *
  * @since       1.0
- * @author      Jonathan H. Wage <jonwage@gmail.com>
- * @author      Roman Borschel <roman@code-factory.org>
  */
 class DateType extends Type
 {
@@ -33,7 +31,7 @@ class DateType extends Type
      * Supports microseconds
      *
      * @throws InvalidArgumentException if $value is invalid
-     * @param  mixed $value \DateTime|\MongoDate|int|float
+     * @param  mixed $value \DateTimeInterface|\MongoDate|int|float
      * @return \DateTime
      */
     public static function getDateTime($value)
@@ -41,20 +39,21 @@ class DateType extends Type
         $datetime = false;
         $exception = null;
 
-        if ($value instanceof \DateTime) {
+        if ($value instanceof \DateTimeInterface) {
             return $value;
         } elseif ($value instanceof \MongoDate) {
-            $datetime = self::craftDateTime($value->sec, $value->usec);
+            $microseconds = str_pad($value->usec, 6, '0', STR_PAD_LEFT); // ensure microseconds
+            $datetime = static::craftDateTime($value->sec, $microseconds);
         } elseif (is_numeric($value)) {
             $seconds = $value;
             $microseconds = 0;
 
             if (false !== strpos($value, '.')) {
                 list($seconds, $microseconds) = explode('.', $value);
-                $microseconds = (int) str_pad((int) $microseconds, 6, '0'); // ensure microseconds
+                $microseconds = str_pad($microseconds, 6, '0'); // ensure microseconds
             }
 
-            $datetime = self::craftDateTime($seconds, $microseconds);
+            $datetime = static::craftDateTime($seconds, $microseconds);
         } elseif (is_string($value)) {
             try {
                 $datetime = new \DateTime($value);
@@ -87,7 +86,7 @@ class DateType extends Type
             return $value;
         }
 
-        $datetime = self::getDateTime($value);
+        $datetime = static::getDateTime($value);
 
         return new \MongoDate($datetime->format('U'), $datetime->format('u'));
     }
@@ -98,16 +97,16 @@ class DateType extends Type
             return null;
         }
 
-        return self::getDateTime($value);
+        return static::getDateTime($value);
     }
 
     public function closureToMongo()
     {
-        return 'if ($value === null || $value instanceof \MongoDate) { $return = $value; } else { $datetime = \\'.__CLASS__.'::getDateTime($value); $return = new \MongoDate($datetime->format(\'U\'), $datetime->format(\'u\')); }';
+        return 'if ($value === null || $value instanceof \MongoDate) { $return = $value; } else { $datetime = \\'.get_class($this).'::getDateTime($value); $return = new \MongoDate($datetime->format(\'U\'), $datetime->format(\'u\')); }';
     }
 
     public function closureToPHP()
     {
-        return 'if ($value === null) { $return = null; } else { $return = \\'.__CLASS__.'::getDateTime($value); }';
+        return 'if ($value === null) { $return = null; } else { $return = \\'.get_class($this).'::getDateTime($value); }';
     }
 }

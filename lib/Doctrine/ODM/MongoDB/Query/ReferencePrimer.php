@@ -20,9 +20,11 @@
 namespace Doctrine\ODM\MongoDB\Query;
 
 use Doctrine\ODM\MongoDB\DocumentManager;
-use Doctrine\ODM\MongoDB\PersistentCollection;
-use Doctrine\ODM\MongoDB\Proxy\Proxy;
 use Doctrine\ODM\MongoDB\Mapping\ClassMetadata;
+use Doctrine\ODM\MongoDB\Mapping\ClassMetadataInfo;
+use Doctrine\ODM\MongoDB\PersistentCollection;
+use Doctrine\ODM\MongoDB\PersistentCollection\PersistentCollectionInterface;
+use Doctrine\ODM\MongoDB\Proxy\Proxy;
 use Doctrine\ODM\MongoDB\UnitOfWork;
 
 /**
@@ -36,7 +38,6 @@ use Doctrine\ODM\MongoDB\UnitOfWork;
  * the referenced identifiers are not immediately available on an inverse side.
  *
  * @since  1.0
- * @author Jeremy Mikola <jmikola@gmail.com>
  */
 class ReferencePrimer
 {
@@ -62,9 +63,10 @@ class ReferencePrimer
     private $uow;
 
     /**
-     * Constructor.
+     * Initializes this instance with the specified document manager and unit of work.
      *
-     * @param DocumentManager $dm
+     * @param DocumentManager $dm Document manager.
+     * @param UnitOfWork $uow Unit of work.
      */
     public function __construct(DocumentManager $dm, UnitOfWork $uow)
     {
@@ -124,7 +126,7 @@ class ReferencePrimer
         /* Simple reference require a target document class so we can construct
          * the priming query.
          */
-        if ( ! empty($mapping['simple']) && empty($mapping['targetDocument'])) {
+        if ($mapping['storeAs'] === ClassMetadataInfo::REFERENCE_STORE_AS_ID && empty($mapping['targetDocument'])) {
             throw new \LogicException(sprintf('Field "%s" is a simple reference without a target document class in class "%s"', $fieldName, $class->name));
         }
 
@@ -135,7 +137,7 @@ class ReferencePrimer
         $primer = $primer ?: $this->defaultPrimer;
         $groupedIds = array();
 
-        /* @var $document PersistentCollection */
+        /* @var $document PersistentCollectionInterface */
         foreach ($documents as $document) {
             $fieldValue = $class->getFieldValue($document, $fieldName);
 
@@ -150,7 +152,7 @@ class ReferencePrimer
                 $refClass = $this->dm->getClassMetadata(get_class($fieldValue));
                 $id = $this->uow->getDocumentIdentifier($fieldValue);
                 $groupedIds[$refClass->name][serialize($id)] = $id;
-            } elseif ($mapping['type'] == 'many' && $fieldValue instanceof PersistentCollection) {
+            } elseif ($mapping['type'] == 'many' && $fieldValue instanceof PersistentCollectionInterface) {
                 $this->addManyReferences($fieldValue, $groupedIds);
             }
         }
@@ -190,7 +192,7 @@ class ReferencePrimer
         }
 
         $mapping = $class->fieldMappings[$e[0]];
-        $e[0] = $mapping['name'];
+        $e[0] = $mapping['fieldName'];
 
         // Case of embedded document(s) to recurse through:
         if ( ! isset($mapping['reference'])) {
@@ -207,7 +209,7 @@ class ReferencePrimer
             foreach ($documents as $document) {
                 $fieldValue = $class->getFieldValue($document, $e[0]);
 
-                if ($fieldValue instanceof PersistentCollection) {
+                if ($fieldValue instanceof PersistentCollectionInterface) {
                     foreach ($fieldValue as $elemDocument) {
                         array_push($childDocuments, $elemDocument);
                     }
@@ -246,20 +248,20 @@ class ReferencePrimer
      * have a target document class defined. Without that, there is no way to
      * infer the class of the referenced documents.
      *
-     * @param PersistentCollection $persistentCollection
+     * @param PersistentCollectionInterface $persistentCollection
      * @param array                $groupedIds
      */
-    private function addManyReferences(PersistentCollection $persistentCollection, array &$groupedIds)
+    private function addManyReferences(PersistentCollectionInterface $persistentCollection, array &$groupedIds)
     {
         $mapping = $persistentCollection->getMapping();
 
-        if ( ! empty($mapping['simple'])) {
+        if ($mapping['storeAs'] === ClassMetadataInfo::REFERENCE_STORE_AS_ID) {
             $className = $mapping['targetDocument'];
             $class = $this->dm->getClassMetadata($className);
         }
 
         foreach ($persistentCollection->getMongoData() as $reference) {
-            if ( ! empty($mapping['simple'])) {
+            if ($mapping['storeAs'] === ClassMetadataInfo::REFERENCE_STORE_AS_ID) {
                 $id = $reference;
             } else {
                 $id = $reference['$id'];

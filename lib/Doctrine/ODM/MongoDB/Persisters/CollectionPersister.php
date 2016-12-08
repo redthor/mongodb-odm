@@ -20,8 +20,9 @@
 namespace Doctrine\ODM\MongoDB\Persisters;
 
 use Doctrine\ODM\MongoDB\DocumentManager;
-use Doctrine\ODM\MongoDB\PersistentCollection;
-use Doctrine\ODM\MongoDB\Persisters\PersistenceBuilder;
+use Doctrine\ODM\MongoDB\LockException;
+use Doctrine\ODM\MongoDB\Mapping\ClassMetadataInfo;
+use Doctrine\ODM\MongoDB\PersistentCollection\PersistentCollectionInterface;
 use Doctrine\ODM\MongoDB\UnitOfWork;
 use Doctrine\ODM\MongoDB\Utility\CollectionHelper;
 
@@ -36,9 +37,6 @@ use Doctrine\ODM\MongoDB\Utility\CollectionHelper;
  * mapping strategy.
  *
  * @since       1.0
- * @author      Jonathan H. Wage <jonwage@gmail.com>
- * @author      Bulat Shakirzyanov <bulat@theopenskyproject.com>
- * @author      Roman Borschel <roman@code-factory.org>
  */
 class CollectionPersister
 {
@@ -73,10 +71,10 @@ class CollectionPersister
     /**
      * Deletes a PersistentCollection instance completely from a document using $unset.
      *
-     * @param PersistentCollection $coll
+     * @param PersistentCollectionInterface $coll
      * @param array $options
      */
-    public function delete(PersistentCollection $coll, array $options)
+    public function delete(PersistentCollectionInterface $coll, array $options)
     {
         $mapping = $coll->getMapping();
         if ($mapping['isInverseSide']) {
@@ -94,10 +92,10 @@ class CollectionPersister
      * Updates a PersistentCollection instance deleting removed rows and
      * inserting new rows.
      *
-     * @param PersistentCollection $coll
+     * @param PersistentCollectionInterface $coll
      * @param array $options
      */
-    public function update(PersistentCollection $coll, array $options)
+    public function update(PersistentCollectionInterface $coll, array $options)
     {
         $mapping = $coll->getMapping();
 
@@ -106,17 +104,17 @@ class CollectionPersister
         }
 
         switch ($mapping['strategy']) {
-            case 'atomicSet':
-            case 'atomicSetArray':
+            case ClassMetadataInfo::STORAGE_STRATEGY_ATOMIC_SET:
+            case ClassMetadataInfo::STORAGE_STRATEGY_ATOMIC_SET_ARRAY:
                 throw new \UnexpectedValueException($mapping['strategy'] . ' update collection strategy should have been handled by DocumentPersister. Please report a bug in issue tracker');
-            
-            case 'set':
-            case 'setArray':
+
+            case ClassMetadataInfo::STORAGE_STRATEGY_SET:
+            case ClassMetadataInfo::STORAGE_STRATEGY_SET_ARRAY:
                 $this->setCollection($coll, $options);
                 break;
 
-            case 'addToSet':
-            case 'pushAll':
+            case ClassMetadataInfo::STORAGE_STRATEGY_ADD_TO_SET:
+            case ClassMetadataInfo::STORAGE_STRATEGY_PUSH_ALL:
                 $coll->initialize();
                 $this->deleteElements($coll, $options);
                 $this->insertElements($coll, $options);
@@ -135,10 +133,10 @@ class CollectionPersister
      * set as a BSON array, which means the collection elements will be
      * reindexed numerically before storage.
      *
-     * @param PersistentCollection $coll
+     * @param PersistentCollectionInterface $coll
      * @param array $options
      */
-    private function setCollection(PersistentCollection $coll, array $options)
+    private function setCollection(PersistentCollectionInterface $coll, array $options)
     {
         list($propertyPath, $parent) = $this->getPathAndParent($coll);
         $coll->initialize();
@@ -154,10 +152,10 @@ class CollectionPersister
      * This method is intended to be used with the "pushAll" and "addToSet"
      * strategies.
      *
-     * @param PersistentCollection $coll
+     * @param PersistentCollectionInterface $coll
      * @param array $options
      */
-    private function deleteElements(PersistentCollection $coll, array $options)
+    private function deleteElements(PersistentCollectionInterface $coll, array $options)
     {
         $deleteDiff = $coll->getDeleteDiff();
 
@@ -190,10 +188,10 @@ class CollectionPersister
      * This method is intended to be used with the "pushAll" and "addToSet"
      * strategies.
      *
-     * @param PersistentCollection $coll
+     * @param PersistentCollectionInterface $coll
      * @param array $options
      */
-    private function insertElements(PersistentCollection $coll, array $options)
+    private function insertElements(PersistentCollectionInterface $coll, array $options)
     {
         $insertDiff = $coll->getInsertDiff();
 
@@ -212,7 +210,7 @@ class CollectionPersister
 
         $value = array_values(array_map($callback, $insertDiff));
 
-        if ($mapping['strategy'] === 'addToSet') {
+        if ($mapping['strategy'] === ClassMetadataInfo::STORAGE_STRATEGY_ADD_TO_SET) {
             $value = array('$each' => $value);
         }
 
@@ -232,10 +230,10 @@ class CollectionPersister
      *     list($path, $parent) = $this->getPathAndParent($coll)
      *     </code>
      *
-     * @param PersistentCollection $coll
+     * @param PersistentCollectionInterface $coll
      * @return array $pathAndParent
      */
-    private function getPathAndParent(PersistentCollection $coll)
+    private function getPathAndParent(PersistentCollectionInterface $coll)
     {
         $mapping = $coll->getMapping();
         $fields = array();
@@ -260,15 +258,22 @@ class CollectionPersister
      * Executes a query updating the given document.
      *
      * @param object $document
-     * @param array $query
+     * @param array $newObj
      * @param array $options
      */
-    private function executeQuery($document, array $query, array $options)
+    private function executeQuery($document, array $newObj, array $options)
     {
         $className = get_class($document);
         $class = $this->dm->getClassMetadata($className);
         $id = $class->getDatabaseIdentifierValue($this->uow->getDocumentIdentifier($document));
+        $query = array('_id' => $id);
+        if ($class->isVersioned) {
+            $query[$class->versionField] = $class->reflFields[$class->versionField]->getValue($document);
+        }
         $collection = $this->dm->getDocumentCollection($className);
-        $collection->update(array('_id' => $id), $query, $options);
+        $result = $collection->update($query, $newObj, $options);
+        if ($class->isVersioned && ! $result['n']) {
+            throw LockException::lockFailed($document);
+        }
     }
 }

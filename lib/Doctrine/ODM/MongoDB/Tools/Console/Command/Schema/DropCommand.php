@@ -24,9 +24,6 @@ use Symfony\Component\Console\Input\InputInterface;
 use Symfony\Component\Console\Input\InputOption;
 use Symfony\Component\Console\Output\OutputInterface;
 
-/**
- * @author Bulat Shakirzyanov <mallluhuct@gmail.com>
- */
 class DropCommand extends AbstractCommand
 {
     private $dropOrder = array(self::INDEX, self::COLLECTION, self::DB);
@@ -77,7 +74,7 @@ class DropCommand extends AbstractCommand
             }
         }
 
-        return ($isErrored) ? 255 : 0;
+        return $isErrored ? 255 : 0;
     }
 
     protected function processDocumentCollection(SchemaManager $sm, $document)

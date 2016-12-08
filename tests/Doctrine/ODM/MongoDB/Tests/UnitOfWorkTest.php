@@ -9,8 +9,6 @@ use Doctrine\ODM\MongoDB\UnitOfWork;
 use Doctrine\ODM\MongoDB\Mapping\Annotations as ODM;
 use Doctrine\ODM\MongoDB\Mapping\ClassMetadata;
 use Doctrine\ODM\MongoDB\Persisters\PersistenceBuilder;
-use Doctrine\ODM\MongoDB\Tests\Mocks\ConnectionMock;
-use Doctrine\ODM\MongoDB\Tests\Mocks\UnitOfWorkMock;
 use Doctrine\ODM\MongoDB\Tests\Mocks\DocumentPersisterMock;
 use Documents\ForumUser;
 use Documents\ForumAvatar;
@@ -238,6 +236,33 @@ class UnitOfWorkTest extends \Doctrine\ODM\MongoDB\Tests\BaseTest
 
         $this->assertEquals(1, count($updates));
         $this->assertTrue($updates[0] === $item);
+    }
+
+    public function testDoubleCommitWithChangeTrackingNotify()
+    {
+        $pb = $this->getMockPersistenceBuilder();
+
+        $class = $this->dm->getClassMetadata('Doctrine\ODM\MongoDB\Tests\NotifyChangedDocument');
+        $persister = $this->getMockDocumentPersister($pb, $class);
+        $this->uow->setDocumentPersister($class->name, $persister);
+
+        $entity = new NotifyChangedDocument();
+        $entity->setId(2);
+        $this->uow->persist($entity);
+
+        $this->uow->commit($entity);
+
+        // Use a custom error handler that will fail the test if the next commit() call raises a notice error
+        set_error_handler(function() {
+            restore_error_handler();
+
+            $this->fail('Expected not to get a notice error after committing an entity multiple times using the NOTIFY change tracking policy.');
+        }, E_NOTICE);
+
+        $this->uow->commit($entity);
+
+        // Restore previous error handler if no errors have been raised
+        restore_error_handler();
     }
 
     public function testGetDocumentStateWithAssignedIdentity()
@@ -586,6 +611,31 @@ class UnitOfWorkTest extends \Doctrine\ODM\MongoDB\Tests\BaseTest
         $this->assertEquals('Documents\User', $this->uow->getClassNameForAssociation($mapping, null));
     }
 
+    public function testRecomputeChangesetForUninitializedProxyDoesNotCreateChangeset()
+    {
+        $user = new \Documents\ForumUser();
+        $user->username = '12345';
+        $user->setAvatar(new \Documents\ForumAvatar());
+
+        $this->dm->persist($user);
+        $this->dm->flush();
+
+        $id = $user->getId();
+        $this->dm->clear();
+
+        $user = $this->dm->find('\Documents\ForumUser', $id);
+        $this->assertInstanceOf('\Documents\ForumUser', $user);
+
+        $this->assertInstanceOf('Doctrine\ODM\MongoDB\Proxy\Proxy', $user->getAvatar());
+
+        $classMetadata = $this->dm->getClassMetadata('Documents\ForumAvatar');
+
+        $this->uow->recomputeSingleDocumentChangeSet($classMetadata, $user->getAvatar());
+
+        $this->assertEquals(array(), $this->uow->getDocumentChangeSet($user->getAvatar()));
+    }
+
+
     protected function getDocumentManager()
     {
         return new \Stubs\DocumentManager();
@@ -599,43 +649,31 @@ class UnitOfWorkTest extends \Doctrine\ODM\MongoDB\Tests\BaseTest
     /**
      * Gets mock HydratorFactory instance
      *
-     * @return Doctrine\ODM\MongoDB\Hydrator\HydratorFactory
+     * @return \Doctrine\ODM\MongoDB\Hydrator\HydratorFactory
      */
     private function getMockHydratorFactory()
     {
-        return $this->getMockBuilder('Doctrine\ODM\MongoDB\Hydrator\HydratorFactory')
-            ->disableOriginalClone()
-            ->disableOriginalConstructor()
-            ->getMock();
+        return $this->createMock('Doctrine\ODM\MongoDB\Hydrator\HydratorFactory');
     }
 
     /**
      * Gets mock EventManager instance
      *
-     * @return Doctrine\Common\EventManager
+     * @return \Doctrine\Common\EventManager
      */
     private function getMockEventManager()
     {
-        return $this->getMockBuilder('Doctrine\Common\EventManager')
-            ->disableOriginalClone()
-            ->disableOriginalConstructor()
-            ->getMock();
+        return $this->createMock('Doctrine\Common\EventManager');
     }
 
     private function getMockPersistenceBuilder()
     {
-        return $this->getMockBuilder('Doctrine\ODM\MongoDB\Persisters\PersistenceBuilder')
-            ->disableOriginalClone()
-            ->disableOriginalConstructor()
-            ->getMock();
+        return $this->createMock('Doctrine\ODM\MongoDB\Persisters\PersistenceBuilder');
     }
 
     private function getMockDocumentManager()
     {
-        return $this->getMockBuilder('Doctrine\ODM\MongoDB\DocumentManager')
-            ->disableOriginalClone()
-            ->disableOriginalConstructor()
-            ->getMock();
+        return $this->createMock('Doctrine\ODM\MongoDB\DocumentManager');
     }
 
     private function getMockDocumentPersister(PersistenceBuilder $pb, ClassMetadata $class)
@@ -661,7 +699,10 @@ class ParentAssociationTest
     }
 }
 
-/** @ODM\Document */
+/**
+ * @ODM\Document
+ * @ODM\ChangeTrackingPolicy("NOTIFY")
+ */
 class NotifyChangedDocument implements \Doctrine\Common\NotifyPropertyChanged
 {
     private $_listeners = array();
@@ -669,7 +710,7 @@ class NotifyChangedDocument implements \Doctrine\Common\NotifyPropertyChanged
     /** @ODM\Id(type="int_id", strategy="none") */
     private $id;
 
-    /** @ODM\String */
+    /** @ODM\Field(type="string") */
     private $data;
 
     /** @ODM\ReferenceMany(targetDocument="NotifyChangedRelatedItem") */
@@ -767,7 +808,7 @@ class ArrayTest
     /** @ODM\Id */
     private $id;
 
-    /** @ODM\Hash */
+    /** @ODM\Field(type="hash") */
     public $data;
 
     public function __construct($data)

@@ -20,7 +20,8 @@ namespace Doctrine\ODM\MongoDB\Persisters;
 
 use Doctrine\ODM\MongoDB\DocumentManager;
 use Doctrine\ODM\MongoDB\Mapping\ClassMetadata;
-use Doctrine\ODM\MongoDB\PersistentCollection;
+use Doctrine\ODM\MongoDB\Mapping\ClassMetadataInfo;
+use Doctrine\ODM\MongoDB\PersistentCollection\PersistentCollectionInterface;
 use Doctrine\ODM\MongoDB\Types\Type;
 use Doctrine\ODM\MongoDB\UnitOfWork;
 use Doctrine\ODM\MongoDB\Utility\CollectionHelper;
@@ -31,7 +32,6 @@ use Doctrine\ODM\MongoDB\Utility\CollectionHelper;
  * UnitOfWork to build queries using atomic operators like $set, $unset, etc.
  *
  * @since       1.0
- * @author      Jonathan H. Wage <jonwage@gmail.com>
  */
 class PersistenceBuilder
 {
@@ -93,7 +93,7 @@ class PersistenceBuilder
                 $insertData[$mapping['name']] = Type::getType($mapping['type'])->convertToDatabaseValue($new);
 
             // @ReferenceOne
-            } elseif (isset($mapping['association']) && $mapping['association'] === ClassMetadata::REFERENCE_ONE && $mapping['isOwningSide']) {
+            } elseif (isset($mapping['association']) && $mapping['association'] === ClassMetadata::REFERENCE_ONE) {
                 $insertData[$mapping['name']] = $this->prepareReferencedDocumentValue($mapping, $new);
 
             // @EmbedOne
@@ -104,7 +104,7 @@ class PersistenceBuilder
             // We're excluding collections using addToSet since there is a risk
             // of duplicated entries stored in the collection
             } elseif ($mapping['type'] === ClassMetadata::MANY && ! $mapping['isInverseSide']
-                    && $mapping['strategy'] !== 'addToSet' && ! $new->isEmpty()) {
+                    && $mapping['strategy'] !== ClassMetadataInfo::STORAGE_STRATEGY_ADD_TO_SET && ! $new->isEmpty()) {
                 $insertData[$mapping['name']] = $this->prepareAssociatedCollectionValue($new, true);
             }
         }
@@ -141,26 +141,20 @@ class PersistenceBuilder
 
             list($old, $new) = $change;
 
-            // @Inc
-            if ($mapping['type'] === 'increment') {
-                if ($new === null) {
-                    if ($mapping['nullable'] === true) {
-                        $updateData['$set'][$mapping['name']] = null;
-                    } else {
-                        $updateData['$unset'][$mapping['name']] = true;
-                    }
-                } elseif ($new >= $old) {
-                    $updateData['$inc'][$mapping['name']] = $new - $old;
-                } else {
-                    $updateData['$inc'][$mapping['name']] = ($old - $new) * -1;
-                }
-
-            // @Field, @String, @Date, etc.
-            } elseif ( ! isset($mapping['association'])) {
-                if (isset($new) || $mapping['nullable'] === true) {
-                    $updateData['$set'][$mapping['name']] = (is_null($new) ? null : Type::getType($mapping['type'])->convertToDatabaseValue($new));
-                } else {
+            // Scalar fields
+            if ( ! isset($mapping['association'])) {
+                if ($new === null && $mapping['nullable'] !== true) {
                     $updateData['$unset'][$mapping['name']] = true;
+                } else {
+                    if ($new !== null && isset($mapping['strategy']) && $mapping['strategy'] === ClassMetadataInfo::STORAGE_STRATEGY_INCREMENT) {
+                        $operator = '$inc';
+                        $value = Type::getType($mapping['type'])->convertToDatabaseValue($new - $old);
+                    } else {
+                        $operator = '$set';
+                        $value = $new === null ? null : Type::getType($mapping['type'])->convertToDatabaseValue($new);
+                    }
+
+                    $updateData[$operator][$mapping['name']] = $value;
                 }
 
             // @EmbedOne
@@ -207,7 +201,7 @@ class PersistenceBuilder
                 }
 
             // @ReferenceOne
-            } elseif (isset($mapping['association']) && $mapping['association'] === ClassMetadata::REFERENCE_ONE && $mapping['isOwningSide']) {
+            } elseif (isset($mapping['association']) && $mapping['association'] === ClassMetadata::REFERENCE_ONE) {
                 if (isset($new) || $mapping['nullable'] === true) {
                     $updateData['$set'][$mapping['name']] = (is_null($new) ? null : $this->prepareReferencedDocumentValue($mapping, $new));
                 } else {
@@ -247,31 +241,28 @@ class PersistenceBuilder
 
             list($old, $new) = $change;
 
-            // @Inc
-            if ($mapping['type'] === 'increment') {
-                if ($new >= $old) {
-                    $updateData['$inc'][$mapping['name']] = $new - $old;
-                } else {
-                    $updateData['$inc'][$mapping['name']] = ($old - $new) * -1;
-                }
+            // Scalar fields
+            if ( ! isset($mapping['association'])) {
+                if ($new !== null || $mapping['nullable'] === true) {
+                    if ($new !== null && empty($mapping['id']) && isset($mapping['strategy']) && $mapping['strategy'] === ClassMetadataInfo::STORAGE_STRATEGY_INCREMENT) {
+                        $operator = '$inc';
+                        $value = Type::getType($mapping['type'])->convertToDatabaseValue($new - $old);
+                    } else {
+                        $operator = '$set';
+                        $value = $new === null ? null : Type::getType($mapping['type'])->convertToDatabaseValue($new);
+                    }
 
-            // @Field, @String, @Date, etc.
-            } elseif ( ! isset($mapping['association'])) {
-                if (isset($new) || $mapping['nullable'] === true) {
-                    $updateData['$set'][$mapping['name']] = (is_null($new) ? null : Type::getType($mapping['type'])->convertToDatabaseValue($new));
+                    $updateData[$operator][$mapping['name']] = $value;
                 }
 
             // @EmbedOne
             } elseif (isset($mapping['association']) && $mapping['association'] === ClassMetadata::EMBED_ONE) {
+                // If we don't have a new value then do nothing on upsert
                 // If we have a new embedded document then lets set the whole thing
                 if ($new && $this->uow->isScheduledForInsert($new)) {
                     $updateData['$set'][$mapping['name']] = $this->prepareEmbeddedDocumentValue($mapping, $new);
-
-                // If we don't have a new value then do nothing on upsert
-                } elseif ( ! $new) {
-
-                // Update existing embedded document
-                } else {
+                } elseif ($new) {
+                    // Update existing embedded document
                     $update = $this->prepareUpsertData($new);
                     foreach ($update as $cmd => $values) {
                         foreach ($values as $key => $value) {
@@ -281,14 +272,14 @@ class PersistenceBuilder
                 }
 
             // @ReferenceOne
-            } elseif (isset($mapping['association']) && $mapping['association'] === ClassMetadata::REFERENCE_ONE && $mapping['isOwningSide']) {
+            } elseif (isset($mapping['association']) && $mapping['association'] === ClassMetadata::REFERENCE_ONE) {
                 if (isset($new) || $mapping['nullable'] === true) {
                     $updateData['$set'][$mapping['name']] = (is_null($new) ? null : $this->prepareReferencedDocumentValue($mapping, $new));
                 }
 
             // @ReferenceMany, @EmbedMany
             } elseif ($mapping['type'] === ClassMetadata::MANY && ! $mapping['isInverseSide']
-                    && $new instanceof PersistentCollection && $new->isDirty()
+                    && $new instanceof PersistentCollectionInterface && $new->isDirty()
                     && CollectionHelper::isAtomic($mapping['strategy'])) {
                 $updateData['$set'][$mapping['name']] = $this->prepareAssociatedCollectionValue($new, true);
             }
@@ -372,7 +363,7 @@ class PersistenceBuilder
                     case ClassMetadata::EMBED_MANY:
                     case ClassMetadata::REFERENCE_MANY:
                         // Skip PersistentCollections already scheduled for deletion
-                        if ( ! $includeNestedCollections && $rawValue instanceof PersistentCollection
+                        if ( ! $includeNestedCollections && $rawValue instanceof PersistentCollectionInterface
                             && $this->uow->isCollectionScheduledForDeletion($rawValue)) {
                             break;
                         }
@@ -454,7 +445,7 @@ class PersistenceBuilder
         }
 
         if (isset($mapping['reference'])) {
-            return $this->prepareReferencedDocumentValue($mapping, $document, false);
+            return $this->prepareReferencedDocumentValue($mapping, $document);
         }
 
         throw new \InvalidArgumentException('Mapping is neither embedded nor reference.');
@@ -463,11 +454,11 @@ class PersistenceBuilder
     /**
      * Returns the collection representation to be stored and unschedules it afterwards.
      *
-     * @param PersistentCollection $coll
+     * @param PersistentCollectionInterface $coll
      * @param bool $includeNestedCollections
      * @return array
      */
-    public function prepareAssociatedCollectionValue(PersistentCollection $coll, $includeNestedCollections = false)
+    public function prepareAssociatedCollectionValue(PersistentCollectionInterface $coll, $includeNestedCollections = false)
     {
         $mapping = $coll->getMapping();
         $pb = $this;
@@ -486,15 +477,5 @@ class PersistenceBuilder
         $this->uow->unscheduleCollectionUpdate($coll);
 
         return $setData;
-    }
-
-    /**
-     * @param object $document
-     * @return boolean
-     */
-    private function isScheduledForInsert($document)
-    {
-        return $this->uow->isScheduledForInsert($document)
-            || $this->uow->getDocumentPersister(get_class($document))->isQueuedForInsert($document);
     }
 }

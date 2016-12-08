@@ -3,12 +3,8 @@
 namespace Doctrine\ODM\MongoDB\Tests\Functional\Ticket;
 
 use Doctrine\Common\Collections\ArrayCollection;
-use Doctrine\ODM\MongoDB\DocumentNotFoundException;
 use Doctrine\ODM\MongoDB\Mapping\Annotations as ODM;
 
-/**
- * @author Jordan Stout <j@jrdn.org>
- */
 class GH597Test extends \Doctrine\ODM\MongoDB\Tests\BaseTest
 {
     public function testEmbedManyGetsUnset()
@@ -157,7 +153,7 @@ class GH597Post
 /** @ODM\EmbeddedDocument */
 class GH597Comment
 {
-    /** @ODM\String() */
+    /** @ODM\Field(type="string") */
     public $comment;
 
     public function __construct($comment)
@@ -173,7 +169,7 @@ class GH597ReferenceMany
     /** @ODM\Id */
     public $id;
 
-    /** @ODM\String() */
+    /** @ODM\Field(type="string") */
     public $field;
 
     public function __construct($field)

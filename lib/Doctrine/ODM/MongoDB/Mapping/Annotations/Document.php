@@ -19,13 +19,20 @@
 
 namespace Doctrine\ODM\MongoDB\Mapping\Annotations;
 
-/** @Annotation */
+/**
+ * Identifies a class as a document that can be stored in the database
+ *
+ * @Annotation
+ */
 final class Document extends AbstractDocument
 {
     public $db;
     public $collection;
     public $repositoryClass;
     public $indexes = array();
+    /** @deprecated */
     public $requireIndexes = false;
+    public $shardKey;
     public $slaveOkay;
+    public $writeConcern;
 }

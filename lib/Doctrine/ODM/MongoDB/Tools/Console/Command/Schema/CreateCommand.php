@@ -24,9 +24,6 @@ use Symfony\Component\Console\Input\InputInterface;
 use Symfony\Component\Console\Input\InputOption;
 use Symfony\Component\Console\Output\OutputInterface;
 
-/**
- * @author Bulat Shakirzyanov <mallluhuct@gmail.com>
- */
 class CreateCommand extends AbstractCommand
 {
     private $createOrder = array(self::DB, self::COLLECTION, self::INDEX);
@@ -48,6 +45,10 @@ class CreateCommand extends AbstractCommand
 
     protected function execute(InputInterface $input, OutputInterface $output)
     {
+        if ($input->getOption(self::DB)) {
+            @trigger_error('The ' . self::DB . ' option is deprecated and will be removed in ODM 2.0', E_USER_DEPRECATED);
+        }
+
         foreach ($this->createOrder as $option) {
             if ($input->getOption($option)) {
                 $create[] = $option;
@@ -84,7 +85,7 @@ class CreateCommand extends AbstractCommand
             }
         }
 
-        return ($isErrored) ? 255 : 0;
+        return $isErrored ? 255 : 0;
     }
 
     protected function processDocumentCollection(SchemaManager $sm, $document)

@@ -37,10 +37,6 @@ use Doctrine\ODM\MongoDB\Types\Type;
  *     $generator->generate($classes, '/path/to/generate/documents');
  *
  * @since   1.0
- * @author  Benjamin Eberlei <kontakt@beberlei.de>
- * @author  Guilherme Blanco <guilhermeblanco@hotmail.com>
- * @author  Jonathan Wage <jonwage@gmail.com>
- * @author  Roman Borschel <roman@code-factory.org>
  */
 class DocumentGenerator
 {
@@ -89,7 +85,8 @@ class DocumentGenerator
 <documentClassName>
 {
 <documentBody>
-}';
+}
+';
 
     private static $getMethodTemplate =
 '/**
@@ -107,7 +104,7 @@ public function <methodName>()
  * <description>
  *
  * @param <variableType>$<variableName>
- * @return self
+ * @return $this
  */
 public function <methodName>(<methodTypeHint>$<variableName><variableDefault>)
 {
@@ -179,7 +176,7 @@ public function <methodName>()
         $dir = dirname($path);
 
         if ( ! is_dir($dir)) {
-            mkdir($dir, 0777, true);
+            mkdir($dir, 0775, true);
         }
 
         $this->isNew = ! file_exists($path) || (file_exists($path) && $this->regenerateDocumentIfExists);
@@ -191,7 +188,7 @@ public function <methodName>()
         if ($this->backupExisting && file_exists($path)) {
             $backupPath = dirname($path) . DIRECTORY_SEPARATOR . basename($path) . '~';
             if ( ! copy($path, $backupPath)) {
-                throw new \RuntimeException("Attempt to backup overwritten document file but copy operation failed.");
+                throw new \RuntimeException('Attempt to backup overwritten document file but copy operation failed.');
             }
         }
 
@@ -203,6 +200,7 @@ public function <methodName>()
         } elseif ( ! $this->isNew && $this->updateDocumentIfExists) {
             file_put_contents($path, $this->generateUpdatedDocumentClass($metadata, $path));
         }
+        chmod($path, 0664);
     }
 
     /**
@@ -223,7 +221,7 @@ public function <methodName>()
 
         $replacements = array(
             $this->generateDocumentNamespace($metadata),
-            $this->generateDocumentImports($metadata),
+            $this->generateDocumentImports(),
             $this->generateDocumentDocBlock($metadata),
             $this->generateDocumentClassName($metadata),
             $this->generateDocumentBody($metadata)
@@ -277,6 +275,7 @@ public function <methodName>()
     /**
      * Set the name of the class the generated classes should extend from
      *
+     * @param string $classToExtend Class name.
      * @return void
      */
     public function setClassToExtend($classToExtend)
@@ -329,7 +328,9 @@ public function <methodName>()
     }
 
     /**
-     * Should an existing document be backed up if it already exists?
+     * Sets a value indicating whether existing documents will be backed up.
+     *
+     * @param bool $bool True to backup existing document, false to overwrite.
      */
     public function setBackupExisting($bool)
     {
@@ -392,7 +393,7 @@ public function <methodName>()
             }
         }
         if ($collections) {
-            return $this->prefixCodeWithSpaces(str_replace("<collections>", $this->spaces . implode("\n" . $this->spaces, $collections), self::$constructorMethodTemplate));
+            return $this->prefixCodeWithSpaces(str_replace('<collections>', $this->spaces . implode("\n" . $this->spaces, $collections), self::$constructorMethodTemplate));
         }
         return '';
     }
@@ -437,20 +438,21 @@ public function <methodName>()
 
     private function hasProperty($property, ClassMetadataInfo $metadata)
     {
-        if ($this->extendsClass()) {
+        if ($this->extendsClass() || class_exists($metadata->name)) {
             // don't generate property if its already on the base class.
-            $reflClass = new \ReflectionClass($this->getClassToExtend());
+            $reflClass = new \ReflectionClass($this->getClassToExtend() ?: $metadata->name);
+
             if ($reflClass->hasProperty($property)) {
                 return true;
             }
         }
-        
+
         foreach ($this->getTraits($metadata) as $trait) {
             if ($trait->hasProperty($property)) {
                 return true;
             }
         }
-        
+
         return (
             isset($this->staticReflection[$metadata->name]) &&
             in_array($property, $this->staticReflection[$metadata->name]['properties'])
@@ -459,20 +461,21 @@ public function <methodName>()
 
     private function hasMethod($method, ClassMetadataInfo $metadata)
     {
-        if ($this->extendsClass()) {
+        if ($this->extendsClass() || class_exists($metadata->name)) {
             // don't generate method if its already on the base class.
-            $reflClass = new \ReflectionClass($this->getClassToExtend());
+            $reflClass = new \ReflectionClass($this->getClassToExtend() ?: $metadata->name);
+
             if ($reflClass->hasMethod($method)) {
                 return true;
             }
         }
-        
+
         foreach ($this->getTraits($metadata) as $trait) {
             if ($trait->hasMethod($method)) {
                 return true;
             }
         }
-        
+
         return (
             isset($this->staticReflection[$metadata->name]) &&
             in_array($method, $this->staticReflection[$metadata->name]['methods'])
@@ -511,15 +514,15 @@ public function <methodName>()
     {
         return substr($metadata->name, 0, strrpos($metadata->name, '\\'));
     }
-    
+
     /**
      * @param ClassMetadataInfo $metadata
      *
      * @return array
      */
-    protected function getTraits(ClassMetadataInfo $metadata) 
+    protected function getTraits(ClassMetadataInfo $metadata)
     {
-        if (PHP_VERSION_ID >= 50400 && ($metadata->reflClass !== null || class_exists($metadata->name))) {
+        if ($metadata->reflClass !== null || class_exists($metadata->name)) {
             $reflClass = $metadata->reflClass === null ? new \ReflectionClass($metadata->name) : $metadata->reflClass;
             $traits = array();
             while ($reflClass !== false) {
@@ -531,7 +534,7 @@ public function <methodName>()
         return array();
     }
 
-    private function generateDocumentImports(ClassMetadataInfo $metadata)
+    private function generateDocumentImports()
     {
         if ($this->generateAnnotations) {
             return 'use Doctrine\\ODM\\MongoDB\\Mapping\\Annotations as ODM;';
@@ -551,12 +554,14 @@ public function <methodName>()
                 $lines[] = ' * @ODM\\MappedSuperclass';
             } elseif ($metadata->isEmbeddedDocument) {
                 $lines[] = ' * @ODM\\EmbeddedDocument';
+            } elseif ($metadata->isQueryResultDocument) {
+                $lines[] = ' * @ODM\\QueryResultDocument';
             } else {
                 $lines[] = ' * @ODM\\Document';
             }
 
             $document = array();
-            if ( ! $metadata->isMappedSuperclass && ! $metadata->isEmbeddedDocument) {
+            if ( ! $metadata->isMappedSuperclass && ! $metadata->isEmbeddedDocument && ! $metadata->isQueryResultDocument) {
                 if ($metadata->collection) {
                     $document[] = ' *     collection="' . $metadata->collection . '"';
                 }
@@ -567,7 +572,7 @@ public function <methodName>()
             if ($metadata->indexes) {
                 $indexes = array();
                 $indexLines = array();
-                $indexLines[] = " *     indexes={";
+                $indexLines[] = ' *     indexes={';
                 foreach ($metadata->indexes as $index) {
                     $keys = array();
                     foreach ($index['keys'] as $key => $value) {
@@ -697,7 +702,7 @@ public function <methodName>()
 
         return implode("\n\n", $methods);
     }
-    
+
     /**
      * @param array $fieldMapping
      *
@@ -740,7 +745,7 @@ public function <methodName>()
                 continue;
             }
 
-            $lines[] = $this->generateAssociationMappingPropertyDocBlock($fieldMapping, $metadata);
+            $lines[] = $this->generateAssociationMappingPropertyDocBlock($fieldMapping);
             $lines[] = $this->spaces . 'protected $' . $fieldMapping['fieldName']
                 . ($fieldMapping['type'] === ClassMetadataInfo::MANY ? ' = array()' : null) . ";\n";
         }
@@ -830,7 +835,7 @@ public function <methodName>()
         return $this->prefixCodeWithSpaces($method);
     }
 
-    private function generateAssociationMappingPropertyDocBlock(array $fieldMapping, ClassMetadataInfo $metadata)
+    private function generateAssociationMappingPropertyDocBlock(array $fieldMapping)
     {
         $lines = array();
         $lines[] = $this->spaces . '/**';
@@ -927,7 +932,7 @@ public function <methodName>()
                     foreach ($fieldMapping['options'] as $key => $value) {
                         $options[] = '"' . $key . '" = "' . $value . '"';
                     }
-                    $field[] = "options={" . implode(', ', $options) . "}";
+                    $field[] = 'options={' . implode(', ', $options) . '}';
                 }
                 $lines[] = $this->spaces . ' * @ODM\\Field(' . implode(', ', $field) . ')';
             }
@@ -998,13 +1003,13 @@ public function <methodName>()
 
             case ClassMetadataInfo::GENERATOR_TYPE_UUID:
                 return 'UUID';
-                
+
             case ClassMetadataInfo::GENERATOR_TYPE_ALNUM:
                 return 'ALNUM';
 
             case ClassMetadataInfo::GENERATOR_TYPE_CUSTOM:
                 return 'CUSTOM';
-                
+
             case ClassMetadataInfo::GENERATOR_TYPE_NONE:
                 return 'NONE';
 

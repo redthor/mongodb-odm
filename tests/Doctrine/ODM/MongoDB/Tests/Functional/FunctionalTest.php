@@ -2,7 +2,6 @@
 
 namespace Doctrine\ODM\MongoDB\Tests\Functional;
 
-use Doctrine\ODM\MongoDB\MongoDBException;
 use Doctrine\ODM\MongoDB\PersistentCollection;
 use Documents\Bars\Bar;
 use Documents\Bars\Location;
@@ -14,9 +13,6 @@ use Documents\Manager;
 use Documents\Address;
 use Documents\Group;
 use Documents\Project;
-use Documents\Agent;
-use Documents\Server;
-use Documents\GuestServer;
 use Documents\Functional\EmbeddedTestLevel0;
 use Documents\Functional\EmbeddedTestLevel0b;
 use Documents\Functional\EmbeddedTestLevel1;
@@ -31,7 +27,6 @@ use Documents\Functional\PreUpdateTestSeller;
 use Documents\Functional\SameCollection1;
 use Documents\Functional\SameCollection2;
 use Documents\Functional\SameCollection3;
-use Documents\Functional\SimpleEmbedAndReference;
 use Documents\Album;
 use Documents\Song;
 use Doctrine\ODM\MongoDB\Mapping\Annotations as ODM;
@@ -295,6 +290,7 @@ class FunctionalTest extends \Doctrine\ODM\MongoDB\Tests\BaseTest
         $user = new User();
         $user->setUsername('jon');
         $user->setCount(100);
+        $user->setFloatCount(100);
 
         $this->dm->persist($user);
         $this->dm->flush();
@@ -303,18 +299,22 @@ class FunctionalTest extends \Doctrine\ODM\MongoDB\Tests\BaseTest
         $user = $this->dm->getRepository('Documents\User')->findOneBy(array('username' => 'jon'));
 
         $user->incrementCount(5);
+        $user->incrementFloatCount(5);
         $this->dm->flush();
         $this->dm->clear();
 
         $user = $this->dm->getRepository('Documents\User')->findOneBy(array('username' => 'jon'));
-        $this->assertEquals(105, $user->getCount());
+        $this->assertSame(105, $user->getCount());
+        $this->assertSame(105.0, $user->getFloatCount());
 
         $user->setCount(50);
+        $user->setFloatCount(50);
 
         $this->dm->flush();
         $this->dm->clear();
         $user = $this->dm->getRepository('Documents\User')->findOneBy(array('username' => 'jon'));
-        $this->assertEquals(50, $user->getCount());
+        $this->assertSame(50, $user->getCount());
+        $this->assertSame(50.0, $user->getFloatCount());
     }
 
     public function testIncrementWithFloat()
@@ -322,6 +322,7 @@ class FunctionalTest extends \Doctrine\ODM\MongoDB\Tests\BaseTest
         $user = new User();
         $user->setUsername('jon');
         $user->setCount(100);
+        $user->setFloatCount(100);
 
         $this->dm->persist($user);
         $this->dm->flush();
@@ -330,18 +331,22 @@ class FunctionalTest extends \Doctrine\ODM\MongoDB\Tests\BaseTest
         $user = $this->dm->getRepository('Documents\User')->findOneBy(array('username' => 'jon'));
 
         $user->incrementCount(1.337);
+        $user->incrementFloatCount(1.337);
         $this->dm->flush();
         $this->dm->clear();
 
         $user = $this->dm->getRepository('Documents\User')->findOneBy(array('username' => 'jon'));
-        $this->assertEquals(101.337, $user->getCount());
+        $this->assertSame(101, $user->getCount());
+        $this->assertSame(101.337, $user->getFloatCount());
 
         $user->incrementCount(9.163);
+        $user->incrementFloatCount(9.163);
         $this->dm->flush();
         $this->dm->clear();
 
         $user = $this->dm->getRepository('Documents\User')->findOneBy(array('username' => 'jon'));
-        $this->assertEquals(110.5, $user->getCount());
+        $this->assertSame(110, $user->getCount());
+        $this->assertSame(110.5, $user->getFloatCount());
     }
 
     public function testIncrementSetsNull()
@@ -349,27 +354,33 @@ class FunctionalTest extends \Doctrine\ODM\MongoDB\Tests\BaseTest
         $user = new User();
         $user->setUsername('jon');
         $user->setCount(10);
+        $user->setFloatCount(10);
 
         $this->dm->persist($user);
         $this->dm->flush();
         $this->dm->clear();
 
         $user = $this->dm->getRepository('Documents\User')->findOneBy(array('username' => 'jon'));
-        $this->assertEquals(10, $user->getCount());
+        $this->assertSame(10, $user->getCount());
+        $this->assertSame(10.0, $user->getFloatCount());
 
         $user->incrementCount(1);
+        $user->incrementFloatCount(1);
         $this->dm->flush();
         $this->dm->clear();
 
         $user = $this->dm->getRepository('Documents\User')->findOneBy(array('username' => 'jon'));
-        $this->assertEquals(11, $user->getCount());
+        $this->assertSame(11, $user->getCount());
+        $this->assertSame(11.0, $user->getFloatCount());
 
         $user->setCount(null);
+        $user->setFloatCount(null);
         $this->dm->flush();
         $this->dm->clear();
 
         $user = $this->dm->getRepository('Documents\User')->findOneBy(array('username' => 'jon'));
-        $this->assertEquals(null, $user->getCount());
+        $this->assertSame(null, $user->getCount());
+        $this->assertSame(null, $user->getFloatCount());
     }
 
     public function testTest()
@@ -889,7 +900,7 @@ class ParentAssociationTestA
 {
     /** @ODM\Id */
     public $id;
-    /** @ODM\String */
+    /** @ODM\Field(type="string") */
     public $name;
     /** @ODM\EmbedOne */
     public $child;
@@ -902,7 +913,7 @@ class ParentAssociationTestA
 /** @ODM\EmbeddedDocument */
 class ParentAssociationTestB
 {
-    /** @ODM\String */
+    /** @ODM\Field(type="string") */
     public $name;
     /** @ODM\EmbedMany */
     public $children = array();
@@ -915,7 +926,7 @@ class ParentAssociationTestB
 /** @ODM\EmbeddedDocument */
 class ParentAssociationTestC
 {
-    /** @ODM\String */
+    /** @ODM\Field(type="string") */
     public $name;
     public function __construct($name)
     {

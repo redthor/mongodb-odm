@@ -20,7 +20,6 @@
 namespace Doctrine\ODM\MongoDB\Mapping;
 
 use Doctrine\Instantiator\Instantiator;
-use Doctrine\ODM\MongoDB\LockException;
 
 /**
  * A <tt>ClassMetadata</tt> instance holds all the object-document mapping metadata
@@ -37,8 +36,6 @@ use Doctrine\ODM\MongoDB\LockException;
  *    the serialized representation).
  *
  * @since       1.0
- * @author      Jonathan H. Wage <jonwage@gmail.com>
- * @author      Roman Borschel <roman@code-factory.org>
  */
 class ClassMetadata extends ClassMetadataInfo
 {
@@ -79,11 +76,9 @@ class ClassMetadata extends ClassMetadataInfo
     {
         $mapping = parent::mapField($mapping);
 
-        if ($this->reflClass->hasProperty($mapping['fieldName'])) {
-            $reflProp = $this->reflClass->getProperty($mapping['fieldName']);
-            $reflProp->setAccessible(true);
-            $this->reflFields[$mapping['fieldName']] = $reflProp;
-        }
+        $reflProp = $this->reflClass->getProperty($mapping['fieldName']);
+        $reflProp->setAccessible(true);
+        $this->reflFields[$mapping['fieldName']] = $reflProp;
     }
 
     /**
@@ -110,11 +105,13 @@ class ClassMetadata extends ClassMetadataInfo
             'namespace', // TODO: REMOVE
             'db',
             'collection',
+            'writeConcern',
             'rootDocumentName',
             'generatorType',
             'generatorOptions',
             'idGenerator',
             'indexes',
+            'shardKey',
         );
 
         // The rest of the metadata is only serialized if necessary.
@@ -142,6 +139,10 @@ class ClassMetadata extends ClassMetadataInfo
 
         if ($this->isEmbeddedDocument) {
             $serialized[] = 'isEmbeddedDocument';
+        }
+
+        if ($this->isQueryResultDocument) {
+            $serialized[] = 'isQueryResultDocument';
         }
 
         if ($this->isVersioned) {

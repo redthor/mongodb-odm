@@ -21,12 +21,13 @@ namespace Doctrine\ODM\MongoDB\Query;
 
 use Doctrine\ODM\MongoDB\DocumentManager;
 use Doctrine\ODM\MongoDB\Mapping\ClassMetadata;
+use Doctrine\ODM\MongoDB\Mapping\ClassMetadataInfo;
+use Doctrine\ODM\MongoDB\Mapping\MappingException;
 
 /**
  * Query expression builder for ODM.
  *
  * @since       1.0
- * @author      Jonathan H. Wage <jonwage@gmail.com>
  */
 class Expr extends \Doctrine\MongoDB\Query\Expr
 {
@@ -44,11 +45,19 @@ class Expr extends \Doctrine\MongoDB\Query\Expr
      */
     private $class;
 
+    /**
+     * @param DocumentManager $dm
+     */
     public function __construct(DocumentManager $dm)
     {
         $this->dm = $dm;
     }
 
+    /**
+     * Sets ClassMetadata for document being queried.
+     *
+     * @param ClassMetadata $class
+     */
     public function setClassMetadata(ClassMetadata $class)
     {
         $this->class = $class;
@@ -56,17 +65,25 @@ class Expr extends \Doctrine\MongoDB\Query\Expr
 
     /**
      * Checks that the value of the current field is a reference to the supplied document.
+     *
+     * @param object $document
+     * @return Expr
      */
     public function references($document)
     {
         if ($this->currentField) {
-            $mapping = $this->class->getFieldMapping($this->currentField);
+            $mapping = $this->getReferenceMapping();
             $dbRef = $this->dm->createDBRef($document, $mapping);
+            $storeAs = array_key_exists('storeAs', $mapping) ? $mapping['storeAs'] : null;
 
-            if (isset($mapping['simple']) && $mapping['simple']) {
+            if ($storeAs === ClassMetadataInfo::REFERENCE_STORE_AS_ID) {
                 $this->query[$mapping['name']] = $dbRef;
             } else {
                 $keys = array('ref' => true, 'id' => true, 'db' => true);
+
+                if ($storeAs === ClassMetadataInfo::REFERENCE_STORE_AS_DB_REF) {
+                    unset($keys['db']);
+                }
 
                 if (isset($mapping['targetDocument'])) {
                     unset($keys['ref'], $keys['db']);
@@ -86,17 +103,25 @@ class Expr extends \Doctrine\MongoDB\Query\Expr
 
     /**
      * Checks that the current field includes a reference to the supplied document.
+     *
+     * @param object $document
+     * @return Expr
      */
     public function includesReferenceTo($document)
     {
         if ($this->currentField) {
-            $mapping = $this->class->getFieldMapping($this->currentField);
+            $mapping = $this->getReferenceMapping();
             $dbRef = $this->dm->createDBRef($document, $mapping);
+            $storeAs = array_key_exists('storeAs', $mapping) ? $mapping['storeAs'] : null;
 
-            if (isset($mapping['simple']) && $mapping['simple']) {
-                $this->query[$mapping['name']]['$elemMatch'] = $dbRef;
+            if ($storeAs === ClassMetadataInfo::REFERENCE_STORE_AS_ID) {
+                $this->query[$mapping['name']] = $dbRef;
             } else {
                 $keys = array('ref' => true, 'id' => true, 'db' => true);
+
+                if ($storeAs === ClassMetadataInfo::REFERENCE_STORE_AS_DB_REF) {
+                    unset($keys['db']);
+                }
 
                 if (isset($mapping['targetDocument'])) {
                     unset($keys['ref'], $keys['db']);
@@ -114,6 +139,11 @@ class Expr extends \Doctrine\MongoDB\Query\Expr
         return $this;
     }
 
+    /**
+     * Gets prepared query part of expression.
+     *
+     * @return array
+     */
     public function getQuery()
     {
         return $this->dm->getUnitOfWork()
@@ -121,10 +151,48 @@ class Expr extends \Doctrine\MongoDB\Query\Expr
             ->prepareQueryOrNewObj($this->query);
     }
 
+    /**
+     * Gets prepared newObj part of expression.
+     *
+     * @return array
+     */
     public function getNewObj()
     {
         return $this->dm->getUnitOfWork()
             ->getDocumentPersister($this->class->name)
             ->prepareQueryOrNewObj($this->newObj);
+    }
+
+    /**
+     * Gets reference mapping for current field from current class or its descendants.
+     *
+     * @return array
+     * @throws MappingException
+     */
+    private function getReferenceMapping()
+    {
+        $mapping = null;
+        try {
+            $mapping = $this->class->getFieldMapping($this->currentField);
+        } catch (MappingException $e) {
+            if (empty($this->class->discriminatorMap)) {
+                throw $e;
+            }
+            $foundIn = null;
+            foreach ($this->class->discriminatorMap as $child) {
+                $childClass = $this->dm->getClassMetadata($child);
+                if ($childClass->hasAssociation($this->currentField)) {
+                    if ($mapping !== null && $mapping !== $childClass->getFieldMapping($this->currentField)) {
+                        throw MappingException::referenceFieldConflict($this->currentField, $foundIn->name, $childClass->name);
+                    }
+                    $mapping = $childClass->getFieldMapping($this->currentField);
+                    $foundIn = $childClass;
+                }
+            }
+            if ($mapping === null) {
+                throw MappingException::mappingNotFoundInClassNorDescendants($this->class->name, $this->currentField);
+            }
+        }
+        return $mapping;
     }
 }

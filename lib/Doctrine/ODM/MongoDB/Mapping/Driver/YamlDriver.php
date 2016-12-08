@@ -21,16 +21,16 @@ namespace Doctrine\ODM\MongoDB\Mapping\Driver;
 
 use Doctrine\Common\Persistence\Mapping\ClassMetadata;
 use Doctrine\Common\Persistence\Mapping\Driver\FileDriver;
+use Doctrine\ODM\MongoDB\Mapping\ClassMetadata as MappingClassMetadata;
 use Doctrine\ODM\MongoDB\Utility\CollectionHelper;
 use Doctrine\ODM\MongoDB\Mapping\ClassMetadataInfo;
 use Symfony\Component\Yaml\Yaml;
+use Symfony\Component\Yaml\Exception\ParseException;
 
 /**
  * The YamlDriver reads the mapping metadata from yaml schema files.
  *
  * @since       1.0
- * @author      Jonathan H. Wage <jonwage@gmail.com>
- * @author      Roman Borschel <roman@code-factory.org>
  */
 class YamlDriver extends FileDriver
 {
@@ -62,6 +62,9 @@ class YamlDriver extends FileDriver
         if (isset($element['collection'])) {
             $class->setCollection($element['collection']);
         }
+        if (isset($element['writeConcern'])) {
+            $class->setWriteConcern($element['writeConcern']);
+        }
         if ($element['type'] == 'document') {
             if (isset($element['repositoryClass'])) {
                 $class->setCustomRepositoryClass($element['repositoryClass']);
@@ -73,14 +76,19 @@ class YamlDriver extends FileDriver
             $class->isMappedSuperclass = true;
         } elseif ($element['type'] === 'embeddedDocument') {
             $class->isEmbeddedDocument = true;
+        } elseif ($element['type'] === 'queryResultDocument') {
+            $class->isQueryResultDocument = true;
         }
         if (isset($element['indexes'])) {
             foreach($element['indexes'] as $index) {
                 $class->addIndex($index['keys'], isset($index['options']) ? $index['options'] : array());
             }
         }
+        if (isset($element['shardKey'])) {
+            $this->setShardKey($class, $element['shardKey']);
+        }
         if (isset($element['inheritanceType'])) {
-            $class->setInheritanceType(constant('Doctrine\ODM\MongoDB\Mapping\ClassMetadata::INHERITANCE_TYPE_' . strtoupper($element['inheritanceType'])));
+            $class->setInheritanceType(constant(MappingClassMetadata::class . '::INHERITANCE_TYPE_' . strtoupper($element['inheritanceType'])));
         }
         if (isset($element['discriminatorField'])) {
             $class->setDiscriminatorField($this->parseDiscriminatorField($element['discriminatorField']));
@@ -92,8 +100,7 @@ class YamlDriver extends FileDriver
             $class->setDefaultDiscriminatorValue($element['defaultDiscriminatorValue']);
         }
         if (isset($element['changeTrackingPolicy'])) {
-            $class->setChangeTrackingPolicy(constant('Doctrine\ODM\MongoDB\Mapping\ClassMetadata::CHANGETRACKING_'
-                    . strtoupper($element['changeTrackingPolicy'])));
+            $class->setChangeTrackingPolicy(constant(MappingClassMetadata::class . '::CHANGETRACKING_' . strtoupper($element['changeTrackingPolicy'])));
         }
         if (isset($element['requireIndexes'])) {
             $class->setRequireIndexes($element['requireIndexes']);
@@ -235,12 +242,14 @@ class YamlDriver extends FileDriver
 
     private function addMappingFromEmbed(ClassMetadataInfo $class, $fieldName, $embed, $type)
     {
+        $defaultStrategy = $type == 'one' ? ClassMetadataInfo::STORAGE_STRATEGY_SET : CollectionHelper::DEFAULT_STRATEGY;
         $mapping = array(
-            'type'           => $type,
-            'embedded'       => true,
-            'targetDocument' => isset($embed['targetDocument']) ? $embed['targetDocument'] : null,
-            'fieldName'      => $fieldName,
-            'strategy'       => isset($embed['strategy']) ? (string) $embed['strategy'] : CollectionHelper::DEFAULT_STRATEGY,
+            'type'            => $type,
+            'embedded'        => true,
+            'targetDocument'  => isset($embed['targetDocument']) ? $embed['targetDocument'] : null,
+            'collectionClass' => isset($embed['collectionClass']) ? $embed['collectionClass'] : null,
+            'fieldName'       => $fieldName,
+            'strategy'        => isset($embed['strategy']) ? (string) $embed['strategy'] : $defaultStrategy,
         );
         if (isset($embed['name'])) {
             $mapping['name'] = $embed['name'];
@@ -259,15 +268,18 @@ class YamlDriver extends FileDriver
 
     private function addMappingFromReference(ClassMetadataInfo $class, $fieldName, $reference, $type)
     {
+        $defaultStrategy = $type == 'one' ? ClassMetadataInfo::STORAGE_STRATEGY_SET : CollectionHelper::DEFAULT_STRATEGY;
         $mapping = array(
             'cascade'          => isset($reference['cascade']) ? $reference['cascade'] : null,
             'orphanRemoval'    => isset($reference['orphanRemoval']) ? $reference['orphanRemoval'] : false,
             'type'             => $type,
             'reference'        => true,
-            'simple'           => isset($reference['simple']) ? (boolean) $reference['simple'] : false,
+            'simple'           => isset($reference['simple']) ? (boolean) $reference['simple'] : false, // deprecated
+            'storeAs'          => isset($reference['storeAs']) ? (string) $reference['storeAs'] : ClassMetadataInfo::REFERENCE_STORE_AS_DB_REF_WITH_DB,
             'targetDocument'   => isset($reference['targetDocument']) ? $reference['targetDocument'] : null,
+            'collectionClass'  => isset($reference['collectionClass']) ? $reference['collectionClass'] : null,
             'fieldName'        => $fieldName,
-            'strategy'         => isset($reference['strategy']) ? (string) $reference['strategy'] : CollectionHelper::DEFAULT_STRATEGY,
+            'strategy'         => isset($reference['strategy']) ? (string) $reference['strategy'] : $defaultStrategy,
             'inversedBy'       => isset($reference['inversedBy']) ? (string) $reference['inversedBy'] : null,
             'mappedBy'         => isset($reference['mappedBy']) ? (string) $reference['mappedBy'] : null,
             'repositoryMethod' => isset($reference['repositoryMethod']) ? (string) $reference['repositoryMethod'] : null,
@@ -333,6 +345,30 @@ class YamlDriver extends FileDriver
      */
     protected function loadMappingFile($file)
     {
-        return Yaml::parse(file_get_contents($file));
+        try {
+            return Yaml::parse(file_get_contents($file));
+        }
+        catch (ParseException $e) {
+            $e->setParsedFile($file);
+            throw $e;
+        }
+    }
+
+    private function setShardKey(ClassMetadataInfo $class, array $shardKey)
+    {
+        $keys = $shardKey['keys'];
+        $options = array();
+
+        if (isset($shardKey['options'])) {
+            $allowed = array('unique', 'numInitialChunks');
+            foreach ($shardKey['options'] as $name => $value) {
+                if ( ! in_array($name, $allowed, true)) {
+                    continue;
+                }
+                $options[$name] = $value;
+            }
+        }
+
+        $class->setShardKey($keys, $options);
     }
 }

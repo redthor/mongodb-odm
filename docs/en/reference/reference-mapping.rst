@@ -18,6 +18,12 @@ constructed internally during hydration. As a developer, you should develop with
 the ``Collection`` interface in mind so that your code can operate with any
 implementation.
 
+.. note::
+
+    New in 1.1: you are no longer limited to using ``ArrayCollection`` and can
+    freely use your own ``Collection`` implementation. For more details please
+    see :doc:`Custom Collections <custom-collections>` chapter.
+
 Why are these classes used over PHP arrays? Native arrays cannot be
 transparently extended in PHP, which is necessary for many advanced features
 provided by the ODM. Although PHP does provide various interfaces that allow
@@ -132,6 +138,8 @@ Reference many documents:
             accounts:
               targetDocument: Documents\Account
 
+.. _reference_mixing_document_types:
+
 Mixing Document Types
 ---------------------
 
@@ -166,8 +174,18 @@ omit the ``targetDocument`` option:
 
 Now the ``$favorites`` property can store a reference to any type of document!
 The class name will be automatically stored in a field named
-``_doctrine_class_name`` within the `DBRef`_ object. The field name can be
-customized with the ``discriminatorField`` option:
+``_doctrine_class_name`` within the `DBRef`_ object.
+
+.. note::
+
+    The MongoDB shell tends to ignore fields other than ``$id`` and ``$ref``
+    when displaying `DBRef`_ objects. You can verify the presence of any ``$db``
+    and discriminator fields by querying and examining the document with a
+    driver. See `SERVER-10777 <https://jira.mongodb.org/browse/SERVER-10777>`_ 
+    for additional discussion on this issue.
+
+The name of the field within the DBRef object can be customized via the
+``discriminatorField`` option:
 
 .. configuration-block::
 
@@ -200,8 +218,8 @@ customized with the ``discriminatorField`` option:
           favorites:
             discriminatorField: type
 
-You can also specify a discriminator map to avoid storing the fully qualified
-class name with each reference:
+You can also specify a discriminator map to avoid storing the |FQCN|
+in each `DBRef`_ object:
 
 .. configuration-block::
 
@@ -244,8 +262,8 @@ class name with each reference:
               album: Documents\Album
               song: Documents\Song
 
-If you have references without a discriminator value that need to be treated
-correctly you can optionally specify a default value for the discriminator:
+If you have references without a discriminator value that should be considered
+a certain class, you can optionally specify a default discriminator value:
 
 .. configuration-block::
 
@@ -291,14 +309,14 @@ correctly you can optionally specify a default value for the discriminator:
               song: Documents\Song
             defaultDiscriminatorValue: album
 
-.. _simple_references:
+.. _storing_references:
 
-Simple References
------------------
+Storing References
+------------------
 
 By default all references are stored as a `DBRef`_ object with the traditional
-``$ref``, ``$id``, and ``$db`` fields (in that order). For references to
-documents of a single collection, storing the collection and database names for
+``$ref``, ``$id``, and (optionally) ``$db`` fields (in that order). For references to
+documents of a single collection, storing the collection (and database) names for
 each reference may be redundant. You can use simple references to store the
 referenced document's identifier (e.g. ``MongoId``) instead of a `DBRef`_.
 
@@ -311,19 +329,19 @@ Example:
         <?php
 
         /**
-         * @ReferenceOne(targetDocument="Profile", simple=true)
+         * @ReferenceOne(targetDocument="Profile", storeAs="id")
          */
         private $profile;
 
     .. code-block:: xml
 
-        <reference-one target-document="Documents\Profile", simple="true" />
+        <reference-one target-document="Documents\Profile", store-as="id" />
 
     .. code-block:: yaml
 
         referenceOne:
           profile:
-            simple: true
+            storeAs: id
 
 Now, the ``profile`` field will only store the ``MongoId`` of the referenced
 Profile document.
@@ -332,6 +350,28 @@ Simple references reduce the amount of storage used, both for the document
 itself and any indexes on the reference field; however, simple references cannot
 be used with discriminators, since there is no `DBRef`_ object in which to store
 a discriminator value.
+
+In addition to saving references as `DBRef`_ with ``$ref``, ``$id``, and ``$db``
+fields and as ``MongoId``, it is possible to save references as `DBRef`_ without
+the ``$db`` field. This solves problems when the database name changes (and also
+reduces the amount of storage used).
+
+The ``storeAs`` option has three possible values:
+
+- **dbRefWithDb**: Uses a `DBRef`_ with ``$ref``, ``$id``, and ``$db`` fields (this is the default)
+- **dbRef**: Uses a `DBRef`_ with ``$ref`` and ``$id``
+- **id**: Uses a ``MongoId``
+
+.. note::
+
+    The ``storeAs=id`` option used to be called a "simple reference". The old syntax is
+    still recognized (so using ``simple=true`` will imply ``storeAs=id``).
+
+.. note::
+
+    For backwards compatibility ``storeAs=dbRefWithDb`` is the default, but
+    ``storeAs=dbRef`` is the recommended setting.
+
 
 Cascading Operations
 --------------------
@@ -373,4 +413,82 @@ The valid values are:
 -  **remove** - cascade remove operation to referenced documents.
 -  **persist** - cascade persist operation to referenced documents.
 
-.. _`DBRef`: http://docs.mongodb.org/manual/reference/database-references/#dbref
+Orphan Removal
+--------------
+
+There is another concept of cascading that is relevant only when removing documents
+from collections. If a Document of type ``A`` contains references to privately
+owned Documents ``B`` then if the reference from ``A`` to ``B`` is removed the
+document ``B`` should also be removed, because it is not used anymore.
+
+OrphanRemoval works with both reference one and many mapped fields.
+
+.. note::
+
+    When using the ``orphanRemoval=true`` option Doctrine makes the assumption
+    that the documents are privately owned and will **NOT** be reused by other documents.
+    If you neglect this assumption your documents will get deleted by Doctrine even if
+    you assigned the orphaned documents to another one.
+
+As a better example consider an Addressbook application where you have Contacts, Addresses
+and StandingData:
+
+.. code-block:: php
+
+    <?php
+
+    namespace Addressbook;
+
+    use Doctrine\Common\Collections\ArrayCollection;
+
+    /**
+     * @Document
+     */
+    class Contact
+    {
+        /** @Id */
+        private $id;
+
+        /** @ReferenceOne(targetDocument="StandingData", orphanRemoval=true) */
+        private $standingData;
+
+        /** @ReferenceMany(targetDocument="Address", mappedBy="contact", orphanRemoval=true) */
+        private $addresses;
+
+        public function __construct()
+        {
+            $this->addresses = new ArrayCollection();
+        }
+
+        public function newStandingData(StandingData $sd)
+        {
+            $this->standingData = $sd;
+        }
+
+        public function removeAddress($pos)
+        {
+            unset($this->addresses[$pos]);
+        }
+    }
+
+Now two examples of what happens when you remove the references:
+
+.. code-block:: php
+
+    <?php
+
+    $contact = $dm->find("Addressbook\Contact", $contactId);
+    $contact->newStandingData(new StandingData("Firstname", "Lastname", "Street"));
+    $contact->removeAddress(1);
+
+    $dm->flush();
+
+In this case you have not only changed the ``Contact`` document itself but
+you have also removed the references for standing data and as well as one
+address reference. When flush is called not only are the references removed
+but both the old standing data and the one address documents are also deleted
+from the database.
+
+.. _`DBRef`: https://docs.mongodb.com/manual/reference/database-references/#dbrefs
+.. |FQCN| raw:: html
+  <abbr title="Fully-Qualified Class Name">FQCN</abbr>

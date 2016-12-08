@@ -17,10 +17,10 @@ Full Tree in Single Document
         /** @Id */
         private $id;
     
-        /** @String */
+        /** @Field(type="string") */
         private $title;
     
-        /** @String */
+        /** @Field(type="string") */
         private $body;
     
         /** @EmbedMany(targetDocument="Comment") */
@@ -32,10 +32,10 @@ Full Tree in Single Document
     /** @EmbeddedDocument */
     class Comment
     {
-        /** @String */
+        /** @Field(type="string") */
         private $by;
     
-        /** @String */
+        /** @Field(type="string") */
         private $text;
     
         /** @EmbedMany(targetDocument="Comment") */
@@ -73,7 +73,7 @@ Parent Reference
         /** @Id */
         private $id;
     
-        /** @String */
+        /** @Field(type="string") */
         private $name;
     
         /**
@@ -97,7 +97,7 @@ Query for children by a specific parent id:
         ->execute();
 
 You can read more about this pattern on the MongoDB documentation page "Trees in MongoDB" in the
-`Parent Links <http://www.mongodb.org/display/DOCS/Trees+in+MongoDB#TreesinMongoDB-ParentLinks>`_ section.
+`Parent Links <https://docs.mongodb.com/manual/tutorial/model-tree-structures/#model-tree-structures-with-parent-references>`_ section.
 
 Child Reference
 ---------------
@@ -112,7 +112,7 @@ Child Reference
         /** @Id */
         private $id;
     
-        /** @String */
+        /** @Field(type="string") */
         private $name;
     
         /**
@@ -149,7 +149,7 @@ Query for immediate parent of a category:
         ->getSingleResult();
 
 You can read more about this pattern on the MongoDB documentation page "Trees in MongoDB" in the
-`Child Links <http://www.mongodb.org/display/DOCS/Trees+in+MongoDB#TreesinMongoDB-ChildLinks>`_ section.
+`Child Links <https://docs.mongodb.com/manual/tutorial/model-tree-structures/#model-tree-structures-with-child-references>`_ section.
 
 Array of Ancestors
 ------------------
@@ -161,7 +161,7 @@ Array of Ancestors
     /** @MappedSuperclass */
     class BaseCategory
     {
-        /** @String */
+        /** @Field(type="string") */
         private $name;
     
         // ...
@@ -218,7 +218,7 @@ Query for all ancestors of a category:
     $ancestors = $category->getAncestors();
 
 You can read more about this pattern on the MongoDB documentation page "Trees in MongoDB" in the
-`Array of Ancestors <http://www.mongodb.org/display/DOCS/Trees+in+MongoDB#TreesinMongoDB-ArrayofAncestors>`_ section.
+`Array of Ancestors <https://docs.mongodb.com/manual/tutorial/model-tree-structures/#model-tree-structures-with-an-array-of-ancestors>`_ section.
 
 Materialized Paths
 ------------------
@@ -233,10 +233,10 @@ Materialized Paths
         /** @Id */
         private $id;
     
-        /** @String */
+        /** @Field(type="string") */
         private $name;
     
-        /** @String */
+        /** @Field(type="string") */
         private $path;
     
         // ...
@@ -264,4 +264,4 @@ Query for the node 'b' and all its descendants:
         ->execute();
 
 You can read more about this pattern on the MongoDB documentation page "Trees in MongoDB" in the
-`Materialized Paths (Full Path in Each Node) <http://www.mongodb.org/display/DOCS/Trees+in+MongoDB#TreesinMongoDB-MaterializedPaths%28FullPathinEachNode%29>`_ section.
+`Materialized Paths (Full Path in Each Node) <https://docs.mongodb.com/manual/tutorial/model-tree-structures/#model-tree-structures-with-materialized-paths>`_ section.

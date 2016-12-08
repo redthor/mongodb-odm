@@ -3,6 +3,7 @@
 namespace Doctrine\ODM\MongoDB\Tests;
 
 use Doctrine\ODM\MongoDB\Mapping\Annotations as ODM;
+use Doctrine\ODM\MongoDB\Query\Query;
 
 class HydratorTest extends BaseTest
 {
@@ -13,6 +14,7 @@ class HydratorTest extends BaseTest
         $user = new HydrationClosureUser();
         $this->dm->getHydratorFactory()->hydrate($user, array(
             '_id' => 1,
+            'title' => null,
             'name' => 'jon',
             'birthdate' => new \DateTime('1961-01-01'),
             'referenceOne' => array('$id' => '1'),
@@ -31,6 +33,7 @@ class HydratorTest extends BaseTest
         ));
 
         $this->assertEquals(1, $user->id);
+        $this->assertSame(null, $user->title);
         $this->assertEquals('jon', $user->name);
         $this->assertInstanceOf('DateTime', $user->birthdate);
         $this->assertInstanceOf(__NAMESPACE__.'\HydrationClosureReferenceOne', $user->referenceOne);
@@ -41,6 +44,26 @@ class HydratorTest extends BaseTest
         $this->assertEquals('jon', $user->embedOne->name);
         $this->assertEquals('jon', $user->embedMany[0]->name);
     }
+    
+    public function testReadOnly()
+    {
+        $class = $this->dm->getClassMetadata(__NAMESPACE__.'\HydrationClosureUser');
+
+        $user = new HydrationClosureUser();
+        $this->dm->getHydratorFactory()->hydrate($user, [
+            '_id' => 1,
+            'name' => 'maciej',
+            'birthdate' => new \DateTime('1961-01-01'),
+            'embedOne' => ['name' => 'maciej'],
+            'embedMany' => [
+                ['name' => 'maciej']
+            ],
+        ], [ Query::HINT_READ_ONLY => true ]);
+        
+        $this->assertFalse($this->uow->isInIdentityMap($user));
+        $this->assertFalse($this->uow->isInIdentityMap($user->embedOne));
+        $this->assertFalse($this->uow->isInIdentityMap($user->embedMany[0]));
+    }
 }
 
 /** @ODM\Document */
@@ -49,10 +72,13 @@ class HydrationClosureUser
     /** @ODM\Id */
     public $id;
 
-    /** @ODM\String */
+    /** @ODM\Field(type="string", nullable=true) */
+    public $title = 'Mr.';
+
+    /** @ODM\Field(type="string") */
     public $name;
     
-    /** @ODM\Date */
+    /** @ODM\Field(type="date") */
     public $birthdate;
 
     /** @ODM\ReferenceOne(targetDocument="HydrationClosureReferenceOne") */
@@ -74,7 +100,7 @@ class HydrationClosureReferenceOne
     /** @ODM\Id */
     public $id;
 
-    /** @ODM\String */
+    /** @ODM\Field(type="string") */
     public $name;
 }
 
@@ -84,20 +110,20 @@ class HydrationClosureReferenceMany
     /** @ODM\Id */
     public $id;
 
-    /** @ODM\String */
+    /** @ODM\Field(type="string") */
     public $name;
 }
 
 /** @ODM\EmbeddedDocument */
 class HydrationClosureEmbedMany
 {
-    /** @ODM\String */
+    /** @ODM\Field(type="string") */
     public $name;
 }
 
 /** @ODM\EmbeddedDocument */
 class HydrationClosureEmbedOne
 {
-    /** @ODM\String */
+    /** @ODM\Field(type="string") */
     public $name;
 }

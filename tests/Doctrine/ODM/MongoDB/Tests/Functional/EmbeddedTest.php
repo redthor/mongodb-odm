@@ -2,11 +2,10 @@
 
 namespace Doctrine\ODM\MongoDB\Tests\Functional;
 
+use Doctrine\Common\Collections\ArrayCollection;
 use Documents\Address;
-use Documents\Profile;
 use Documents\Phonenumber;
 use Documents\Account;
-use Documents\Group;
 use Documents\User;
 use Documents\Functional\EmbeddedTestLevel0;
 use Documents\Functional\EmbeddedTestLevel0b;
@@ -17,7 +16,6 @@ use Documents\Functional\NotSavedEmbedded;
 use Documents\Functional\VirtualHost;
 use Documents\Functional\VirtualHostDirective;
 use Doctrine\ODM\MongoDB\Mapping\Annotations as ODM;
-use Doctrine\ODM\MongoDB\PersistentCollection;
 
 class EmbeddedTest extends \Doctrine\ODM\MongoDB\Tests\BaseTest
 {
@@ -110,6 +108,16 @@ class EmbeddedTest extends \Doctrine\ODM\MongoDB\Tests\BaseTest
             ->getSingleResult();
         $this->assertNotNull($user);
         $this->assertEquals($addressClone, $user->getAddress());
+
+        $oldAddress = $user->getAddress();
+        $address = new Address();
+        $address->setAddress('Someplace else');
+        $user->setAddress($address);
+        $this->uow->computeChangeSets();
+        $changeSet = $this->uow->getDocumentChangeSet($user);
+        $this->assertNotEmpty($changeSet['address']);
+        $this->assertSame($oldAddress, $changeSet['address'][0]);
+        $this->assertSame($user->getAddress(), $changeSet['address'][1]);
     }
 
     public function testRemoveOneEmbedded()
@@ -524,6 +532,80 @@ class EmbeddedTest extends \Doctrine\ODM\MongoDB\Tests\BaseTest
         $this->assertNotSame($test->embed, $test->embedMany[0]);
         $this->assertNotSame($test->embed, $test->embedMany[1]);
     }
+
+    public function testWhenCopyingManyEmbedSubDocumentsFromOneDocumentToAnotherWillNotAffectTheSourceDocument()
+    {
+        $test1 = new ChangeEmbeddedIdTest();
+
+        $embedded = new EmbeddedDocumentWithId();
+        $embedded->id = (string) new \MongoId();;
+        $test1->embedMany = array($embedded);
+
+        $this->dm->persist($test1);
+        $this->dm->flush();
+
+        $test2 = new ChangeEmbeddedIdTest();
+        $test2->embedMany = $test1->embedMany; //using clone will work
+        $this->dm->persist($test2);
+
+        $this->assertNotSame($test1->embedMany->first(), $test2->embedMany->first());
+
+        $this->dm->flush();
+
+
+        //do some operations on test1
+        $this->dm->persist($test1);
+        $this->dm->flush();
+
+        $this->dm->clear(); //get clean results from mongo
+        $test1 = $this->dm->find(get_class($test1), $test1->id);
+
+        $this->assertEquals(1, count($test1->embedMany));
+    }
+
+    public function testReusedEmbeddedDocumentsAreClonedInFact()
+    {
+        $test1 = new ChangeEmbeddedIdTest();
+        $test2 = new ChangeEmbeddedIdTest();
+
+        $embedded = new EmbeddedDocumentWithId();
+        $embedded->id = (string) new \MongoId();
+
+        $test1->embed = $embedded;
+        $test2->embed = $embedded;
+
+        $this->dm->persist($test1);
+        $this->dm->persist($test2);
+
+        $this->assertNotSame($test1->embed, $test2->embed);
+
+        $this->dm->flush();
+
+        $this->assertNotSame($test1->embed, $test2->embed);
+
+        $originalTest1 = $this->uow->getOriginalDocumentData($test1);
+        $this->assertSame($originalTest1['embed'], $test1->embed);
+        $originalTest2 = $this->uow->getOriginalDocumentData($test2);
+        $this->assertSame($originalTest2['embed'], $test2->embed);
+    }
+
+    public function testEmbeddedDocumentWithDifferentFieldNameAnnotation()
+    {
+        $test1 = new ChangeEmbeddedWithNameAnnotationTest();
+
+        $embedded = new EmbeddedDocumentWithId();
+        $embedded->id = (string) new \MongoId();
+
+        $firstEmbedded = new EmbedDocumentWithAnotherEmbed();
+        $firstEmbedded->embed = $embedded;
+
+        $secondEmbedded = clone $firstEmbedded;
+
+        $test1->embedOne = $firstEmbedded;
+        $test1->embedTwo = $secondEmbedded;
+
+        $this->dm->persist($test1);
+    }
 }
 
 /**
@@ -544,7 +626,12 @@ class ChangeEmbeddedIdTest
     /**
      * @ODM\EmbedMany(targetDocument="EmbeddedDocumentWithId")
      */
-    public $embedMany = array();
+    public $embedMany;
+
+    public function __construct()
+    {
+        $this->embedMany = new ArrayCollection();
+    }
 }
 
 /**
@@ -554,4 +641,36 @@ class EmbeddedDocumentWithId
 {
     /** @ODM\Id */
     public $id;
+}
+
+/**
+ * @ODM\Document
+ */
+class ChangeEmbeddedWithNameAnnotationTest
+{
+    /**
+     * @ODM\Id
+     */
+    public $id;
+
+    /**
+     * @ODM\EmbedOne(targetDocument="EmbeddedDocumentWithAnotherEmbedded")
+     */
+    public $embedOne;
+
+    /**
+     * @ODM\EmbedOne(targetDocument="EmbeddedDocumentWithAnotherEmbedded")
+     */
+    public $embedTwo;
+}
+
+/**
+ * @ODM\EmbeddedDocument
+ */
+class EmbedDocumentWithAnotherEmbed
+{
+    /**
+     * @ODM\EmbedOne(targetDocument="EmbeddedDocumentWithId", name="m_id")
+     */
+    public $embed;
 }

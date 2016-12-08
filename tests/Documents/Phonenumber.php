@@ -2,13 +2,12 @@
 
 namespace Documents;
 
-use Doctrine\ODM\MongoDB\Mapping\ClassMetadata;
 use Doctrine\ODM\MongoDB\Mapping\Annotations as ODM;
 
 /** @ODM\EmbeddedDocument */
 class Phonenumber
 {
-    /** @ODM\String */
+    /** @ODM\Field(type="string") */
     private $phonenumber;
 
     /** @ODM\ReferenceOne(targetDocument="User", cascade={"persist"}) */

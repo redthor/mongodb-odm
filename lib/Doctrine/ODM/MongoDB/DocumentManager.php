@@ -39,8 +39,6 @@ use Doctrine\ODM\MongoDB\Repository\RepositoryFactory;
  *     $dm = DocumentManager::create(new Connection(), $config);
  *
  * @since       1.0
- * @author      Jonathan H. Wage <jonwage@gmail.com>
- * @author      Roman Borschel <roman@code-factory.org>
  */
 class DocumentManager implements ObjectManager
 {
@@ -304,8 +302,8 @@ class DocumentManager implements ObjectManager
 
         $metadata = $this->metadataFactory->getMetadataFor($className);
         $db = $metadata->getDatabase();
-        $db = $db ? $db : $this->config->getDefaultDB();
-        $db = $db ? $db : 'doctrine';
+        $db = $db ?: $this->config->getDefaultDB();
+        $db = $db ?: 'doctrine';
         $this->documentDatabases[$className] = $this->connection->selectDatabase($db);
 
         return $this->documentDatabases[$className];
@@ -375,6 +373,17 @@ class DocumentManager implements ObjectManager
     public function createQueryBuilder($documentName = null)
     {
         return new Query\Builder($this, $documentName);
+    }
+
+    /**
+     * Creates a new aggregation builder instance for a class.
+     *
+     * @param string $documentName The document class name.
+     * @return Aggregation\Builder
+     */
+    public function createAggregationBuilder($documentName)
+    {
+        return new Aggregation\Builder($this, $documentName);
     }
 
     /**
@@ -675,13 +684,13 @@ class DocumentManager implements ObjectManager
         $class = $this->getClassMetadata(get_class($document));
         $id = $this->unitOfWork->getDocumentIdentifier($document);
 
-        if ( ! $id) {
+        if ($id === null) {
             throw new \RuntimeException(
                 sprintf('Cannot create a DBRef for class %s without an identifier. Have you forgotten to persist/merge the document first?', $class->name)
             );
         }
 
-        if ( ! empty($referenceMapping['simple'])) {
+        if ($referenceMapping['storeAs'] === ClassMetadataInfo::REFERENCE_STORE_AS_ID) {
             if ($class->inheritanceType === ClassMetadataInfo::INHERITANCE_TYPE_SINGLE_COLLECTION) {
                 throw MappingException::simpleReferenceMustNotTargetDiscriminatedDocument($referenceMapping['targetDocument']);
             }
@@ -691,8 +700,11 @@ class DocumentManager implements ObjectManager
         $dbRef = array(
             '$ref' => $class->getCollection(),
             '$id'  => $class->getDatabaseIdentifierValue($id),
-            '$db'  => $this->getDocumentDatabase($class->name)->getName(),
         );
+
+        if ($referenceMapping['storeAs'] === ClassMetadataInfo::REFERENCE_STORE_AS_DB_REF_WITH_DB) {
+            $dbRef['$db'] = $this->getDocumentDatabase($class->name)->getName();
+        }
 
         /* If the class has a discriminator (field and value), use it. A child
          * class that is not defined in the discriminator map may only have a

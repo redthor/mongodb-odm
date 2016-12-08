@@ -23,7 +23,7 @@ property:
             /** @Id */
             public $id;
     
-            /** @String @Index */
+            /** @Field(type="string") @Index */
             public $username;
         }
 
@@ -63,7 +63,7 @@ You can customize the index with some additional options:
    **expireAfterSeconds** - If you specify this option then the associated 
    document will be automatically removed when the provided time (in seconds) 
    has passed. This option is bound to a number of limitations, which 
-   are documented at http://docs.mongodb.org/manual/tutorial/expire-data/.
+   are documented at https://docs.mongodb.com/manual/tutorial/expire-data/.
 -
    **order** - The order of the index (asc or desc).
 -
@@ -72,6 +72,13 @@ You can customize the index with some additional options:
    **sparse** - Create a sparse index. If a unique index is being created
    the sparse option will allow duplicate null entries, but the field must be
    unique otherwise.
+-
+   **partialFilterExpression** - Create a partial index. Partial indexes only
+   index the documents in a collection that meet a specified filter expression.
+   By indexing a subset of the documents in a collection, partial indexes have
+   lower storage requirements and reduced performance costs for index creation
+   and maintenance. This feature was introduced with MongoDB 3.2 and is not
+   available on older versions.
 
 Unique Index
 ------------
@@ -90,7 +97,7 @@ Unique Index
             /** @Id */
             public $id;
     
-            /** @String @Index(unique=true, order="asc") */
+            /** @Field(type="string") @Index(unique=true, order="asc") */
             public $username;
         }
 
@@ -123,7 +130,7 @@ For your convenience you can quickly specify a unique index with
             /** @Id */
             public $id;
     
-            /** @String @UniqueIndex(order="asc") */
+            /** @Field(type="string") @UniqueIndex(order="asc") */
             public $username;
         }
 
@@ -158,10 +165,10 @@ you can specify them on the class doc block:
             /** @Id */
             public $id;
     
-            /** @Integer */
+            /** @Field(type="int") */
             public $accountId;
     
-            /** @String */
+            /** @Field(type="string") */
             public $username;
         }
 
@@ -217,10 +224,10 @@ annotation:
             /** @Id */
             public $id;
     
-            /** @Integer */
+            /** @Field(type="int") */
             public $accountId;
     
-            /** @String */
+            /** @Field(type="string") */
             public $username;
         }
 
@@ -272,7 +279,7 @@ documents.
     /** @EmbeddedDocument */
     class Comment
     {
-        /** @Date @Index */
+        /** @Field(type="date") @Index */
         private $date;
 
         // ...
@@ -317,7 +324,16 @@ database:
 Also, for your convenience you can create the indexes for your mapped documents from the
 :doc:`console <console-commands>`:
 
+..
+
     $ php mongodb.php mongodb:schema:create --index
+
+.. note::
+
+    If you are :ref:`mixing document types <embed_mixing_document_types>` for your
+    embedded documents, ODM will not be able to create indexes for their fields
+    unless you specify a discriminator map for the :ref:`embed-one <embed_one>`
+    or :ref:`embed-many <embed_many>` relationship.
 
 Geospatial Indexing
 -------------------
@@ -347,10 +363,10 @@ options structures manually:
         /** @EmbeddedDocument */
         class Coordinates
         {
-            /** @Float */
+            /** @Field(type="float") */
             public $latitude;
     
-            /** @Float */
+            /** @Field(type="float") */
             public $longitude;
         }
 
@@ -358,7 +374,7 @@ options structures manually:
 
         <indexes>
             <index>
-                <key name="coordinates" value="2d" />
+                <key name="coordinates" order="2d" />
             </index>
         </indexes>
 
@@ -369,8 +385,66 @@ options structures manually:
             keys:
               coordinates: 2d
 
+Partial indexes
+---------------
+
+You can create a partial index by adding a ``partialFilterExpression`` to any
+index.
+
+.. configuration-block::
+
+    .. code-block:: php
+
+        <?php
+
+        /**
+         * @Document
+         * @Index(keys={"city"="asc"}, partialFilterExpression={"version"={"$gt"=1}})
+         */
+        class Place
+        {
+            /** @Id */
+            public $id;
+
+            /** @Field(type="string") */
+            public $city;
+
+            /** @Field(type="int") */
+            public $version;
+        }
+
+    .. code-block:: xml
+
+        <indexes>
+            <index>
+                <key name="city" order="asc" />
+                <partial-filter-expression>
+                    <field name="version" value="1" operator="gt" />
+                </partial-filter-expression>
+            </index>
+        </indexes>
+
+    .. code-block:: yaml
+
+        indexes:
+          partialIndexExample:
+            keys:
+              coordinates: asc
+            options:
+              partialFilterExpression:
+                version: { $gt: 1 }
+
+.. note::
+
+    Partial indexes are only available with MongoDB 3.2 or newer. For more
+    information on partial filter expressions, read the
+    `official MongoDB documentation <https://docs.mongodb.com/manual/core/index-partial/>`_.
+
 Requiring Indexes
 -----------------
+
+.. note::
+    Requiring Indexes was deprecated in 1.2 and will be removed in 2.0.
 
 Sometimes you may want to require indexes for all your queries to ensure you don't let stray unindexed queries
 make it to the database and cause performance problems.
@@ -390,7 +464,7 @@ make it to the database and cause performance problems.
             /** @Id */
             public $id;
     
-            /** @String @Index */
+            /** @Field(type="string") @Index */
             public $city;
         }
 

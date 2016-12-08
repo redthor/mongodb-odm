@@ -21,14 +21,12 @@ namespace Doctrine\ODM\MongoDB\Query;
 
 use Doctrine\ODM\MongoDB\DocumentManager;
 use Doctrine\ODM\MongoDB\Hydrator;
-use Doctrine\ODM\MongoDB\Query\Expr;
-use Doctrine\ODM\MongoDB\UnitOfWork;
+use Doctrine\ODM\MongoDB\Mapping\ClassMetadataInfo;
 
 /**
  * Query builder for ODM.
  *
  * @since       1.0
- * @author      Jonathan H. Wage <jonwage@gmail.com>
  */
 class Builder extends \Doctrine\MongoDB\Query\Builder
 {
@@ -83,6 +81,13 @@ class Builder extends \Doctrine\MongoDB\Query\Builder
     private $requireIndexes;
 
     /**
+     * Whether or not to register documents in UnitOfWork.
+     *
+     * @var bool
+     */
+    private $readOnly;
+
+    /**
      * Construct a Builder
      *
      * @param DocumentManager $dm
@@ -101,7 +106,9 @@ class Builder extends \Doctrine\MongoDB\Query\Builder
      * Set whether or not to require indexes.
      *
      * @param bool $requireIndexes
-     * @return Builder
+     * @return $this
+     *
+     * @deprecated method was deprecated in 1.2 and will be removed in 2.0
      */
     public function requireIndexes($requireIndexes = true)
     {
@@ -113,7 +120,7 @@ class Builder extends \Doctrine\MongoDB\Query\Builder
      * Set the current field to operate on.
      *
      * @param string $field
-     * @return self
+     * @return $this
      */
     public function field($field)
     {
@@ -138,7 +145,7 @@ class Builder extends \Doctrine\MongoDB\Query\Builder
      * Closure defined in {@link ReferencePrimer::__construct()}.
      *
      * @param boolean|callable $primer
-     * @return Builder
+     * @return $this
      * @throws \InvalidArgumentException If $primer is not boolean or callable
      */
     public function prime($primer = true)
@@ -147,11 +154,16 @@ class Builder extends \Doctrine\MongoDB\Query\Builder
             throw new \InvalidArgumentException('$primer is not a boolean or callable');
         }
 
+        if ($primer === false) {
+            unset($this->primers[$this->currentField]);
+
+            return $this;
+        }
+
         if (array_key_exists('eagerCursor', $this->query) && !$this->query['eagerCursor']) {
             throw new \BadMethodCallException("Can't call prime() when setting eagerCursor to false");
         }
 
-        $this->eagerCursor(true);
         $this->primers[$this->currentField] = $primer;
         return $this;
     }
@@ -171,7 +183,7 @@ class Builder extends \Doctrine\MongoDB\Query\Builder
 
     /**
      * @param bool $bool
-     * @return Builder
+     * @return $this
      */
     public function hydrate($bool = true)
     {
@@ -181,7 +193,17 @@ class Builder extends \Doctrine\MongoDB\Query\Builder
 
     /**
      * @param bool $bool
-     * @return Builder
+     * @return $this
+     */
+    public function readOnly($bool = true)
+    {
+        $this->readOnly = $bool;
+        return $this;
+    }
+
+    /**
+     * @param bool $bool
+     * @return $this
      */
     public function refresh($bool = true)
     {
@@ -193,7 +215,7 @@ class Builder extends \Doctrine\MongoDB\Query\Builder
      * Change the query type to find and optionally set and change the class being queried.
      *
      * @param string $documentName
-     * @return Builder
+     * @return $this
      */
     public function find($documentName = null)
     {
@@ -205,7 +227,7 @@ class Builder extends \Doctrine\MongoDB\Query\Builder
 
     /**
      * @param string $documentName
-     * @return Builder
+     * @return $this
      */
     public function findAndUpdate($documentName = null)
     {
@@ -217,7 +239,7 @@ class Builder extends \Doctrine\MongoDB\Query\Builder
 
     /**
      * @param bool $bool
-     * @return self
+     * @return $this
      */
     public function returnNew($bool = true)
     {
@@ -229,7 +251,7 @@ class Builder extends \Doctrine\MongoDB\Query\Builder
 
     /**
      * @param string $documentName
-     * @return Builder
+     * @return $this
      */
     public function findAndRemove($documentName = null)
     {
@@ -241,7 +263,7 @@ class Builder extends \Doctrine\MongoDB\Query\Builder
 
     /**
      * @param string $documentName
-     * @return Builder
+     * @return $this
      */
     public function update($documentName = null)
     {
@@ -253,7 +275,7 @@ class Builder extends \Doctrine\MongoDB\Query\Builder
 
     /**
      * @param string $documentName
-     * @return Builder
+     * @return $this
      */
     public function insert($documentName = null)
     {
@@ -265,7 +287,7 @@ class Builder extends \Doctrine\MongoDB\Query\Builder
 
     /**
      * @param string $documentName
-     * @return Builder
+     * @return $this
      */
     public function remove($documentName = null)
     {
@@ -277,7 +299,7 @@ class Builder extends \Doctrine\MongoDB\Query\Builder
 
     /**
      * @param object $document
-     * @return Builder
+     * @return $this
      */
     public function references($document)
     {
@@ -287,7 +309,7 @@ class Builder extends \Doctrine\MongoDB\Query\Builder
 
     /**
      * @param object $document
-     * @return Builder
+     * @return $this
      */
     public function includesReferenceTo($document)
     {
@@ -321,8 +343,21 @@ class Builder extends \Doctrine\MongoDB\Query\Builder
             $query['distinct'] = $documentPersister->prepareFieldName($query['distinct']);
         }
 
-        if (isset($query['select'])) {
+        if ($this->class->inheritanceType === ClassMetadataInfo::INHERITANCE_TYPE_SINGLE_COLLECTION && ! empty($query['upsert']) &&
+            (empty($query['query'][$this->class->discriminatorField]) || is_array($query['query'][$this->class->discriminatorField]))) {
+            throw new \InvalidArgumentException('Upsert query that is to be performed on discriminated document does not have single ' .
+                'discriminator. Either not use base class or set \'' . $this->class->discriminatorField . '\' field manually.');
+        }
+
+        if ( ! empty($query['select'])) {
             $query['select'] = $documentPersister->prepareSortOrProjection($query['select']);
+            if ($this->hydrate && $this->class->inheritanceType === ClassMetadataInfo::INHERITANCE_TYPE_SINGLE_COLLECTION
+                && ! isset($query['select'][$this->class->discriminatorField])) {
+                $includeMode = 0 < count(array_filter($query['select'], function($mode) { return $mode == 1; }));
+                if ($includeMode && ! isset($query['select'][$this->class->discriminatorField])) {
+                    $query['select'][$this->class->discriminatorField] = 1;
+                }
+            }
         }
 
         if (isset($query['sort'])) {
@@ -342,7 +377,8 @@ class Builder extends \Doctrine\MongoDB\Query\Builder
             $this->hydrate,
             $this->refresh,
             $this->primers,
-            $this->requireIndexes
+            $this->requireIndexes,
+            $this->readOnly
         );
     }
 
@@ -373,7 +409,7 @@ class Builder extends \Doctrine\MongoDB\Query\Builder
             $discriminatorValues = $this->getDiscriminatorValues($documentNames);
 
             // If a defaultDiscriminatorValue is set and it is among the discriminators being queries, add NULL to the list
-            if ($metadata->defaultDiscriminatorValue && (array_search($metadata->defaultDiscriminatorValue, $discriminatorValues)) !== false) {
+            if ($metadata->defaultDiscriminatorValue && array_search($metadata->defaultDiscriminatorValue, $discriminatorValues) !== false) {
                 $discriminatorValues[] = null;
             }
 

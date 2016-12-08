@@ -166,7 +166,6 @@ Here is a quick overview of the built-in mapping types:
 -  ``float``
 -  ``hash``
 -  ``id``
--  ``increment``
 -  ``int``
 -  ``key``
 -  ``object_id``
@@ -197,7 +196,6 @@ This list explains some of the less obvious mapping types:
 -  ``hash``: associative array to MongoDB object
 -  ``id``: string to MongoId by default, but other formats are possible
 -  ``timestamp``: string to MongoTimestamp
--  ``increment``: integer in both PHP and MongoDB
 -  ``raw``: any type
 
 .. note::
@@ -271,7 +269,7 @@ The available strategies are:
 - ``UUID`` - Generates a UUID identifier.
 - ``NONE`` - Do not generate any identifier. ID must be manually set.
 
-Here is how you can configure the strategy for the different configuration formats:
+Here is an example how to manually set a string identifier for your documents:
 
 .. configuration-block::
 
@@ -282,7 +280,7 @@ Here is how you can configure the strategy for the different configuration forma
         /** Document */
         class MyPersistentClass
         {
-            /** @Id(strategy="NONE") */
+            /** @Id(strategy="NONE", type="string") */
             private $id;
     
             public function setId($id)
@@ -300,17 +298,17 @@ Here is how you can configure the strategy for the different configuration forma
                                 xsi:schemaLocation="http://doctrine-project.org/schemas/odm/doctrine-mongo-mapping
                                                     http://doctrine-project.org/schemas/odm/doctrine-mongo-mapping.xsd">
     
-            <document name="MyPersistentClass" customId="true">
-                <field name="id" id="true" strategy="NONE" />
+            <document name="MyPersistentClass">
+                <field name="id" id="true" strategy="NONE" type="string" />
             </document>
         </doctrine-mongo-mapping>
     
     .. code-block:: yaml
 
         MyPersistentClass:
-          customId: true
           fields:
             id:
+              type: string
               id: true
               strategy: NONE
 
@@ -336,6 +334,57 @@ Now you can retrieve the document later:
     //...
 
     $document = $dm->find('MyPersistentClass', 'my_unique_identifier');
+
+You can define your own ID generator by extending the
+``Doctrine\ODM\MongoDB\Id\AbstractIdGenerator`` class and specifying the class
+as an option for the ``CUSTOM`` strategy:
+
+.. configuration-block::
+
+    .. code-block:: php
+
+        <?php
+
+        /** Document */
+        class MyPersistentClass
+        {
+            /** @Id(strategy="CUSTOM", type="string", options={"class"="Vendor\Specific\Generator"}) */
+            private $id;
+
+            public function setId($id)
+            {
+                $this->id = $id;
+            }
+
+            //...
+        }
+
+    .. code-block:: xml
+
+        <doctrine-mongo-mapping xmlns="http://doctrine-project.org/schemas/odm/doctrine-mongo-mapping"
+                                xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+                                xsi:schemaLocation="http://doctrine-project.org/schemas/odm/doctrine-mongo-mapping
+                                                    http://doctrine-project.org/schemas/odm/doctrine-mongo-mapping.xsd">
+
+            <document name="MyPersistentClass">
+                <field name="id" id="true" strategy="CUSTOM" type="string">
+                    <id-generator-option name="class" value="Vendor\Specific\Generator" />
+                </field>
+            </document>
+        </doctrine-mongo-mapping>
+
+    .. code-block:: yaml
+
+        MyPersistentClass:
+          fields:
+            id:
+              id: true
+              strategy: CUSTOM
+              type: string
+              options:
+                class: Vendor\Specific\Generator
+
+
 
 Fields
 ~~~~~~
@@ -410,7 +459,7 @@ as follows:
 
         <field fieldName="name" name="db_name" />
 
-    -- code-block:: yaml
+    .. code-block:: yaml
 
         name:
           name: db_name
@@ -423,7 +472,7 @@ handy when you're missing a specific mapping type or when you want
 to replace the existing implementation of a mapping type.
 
 In order to create a new mapping type you need to subclass
-``Doctrine\ODM\MongoDB\Mapping\Types\Type`` and implement/override
+``Doctrine\ODM\MongoDB\Types\Type`` and implement/override
 the methods. Here is an example skeleton of such a custom type
 class:
 
@@ -433,7 +482,7 @@ class:
 
     namespace My\Project\Types;
 
-    use Doctrine\ODM\MongoDB\Mapping\Types\Type;
+    use Doctrine\ODM\MongoDB\Types\Type;
 
     /**
      * My custom datatype.
@@ -472,7 +521,7 @@ Restrictions to keep in mind:
 
 When you have implemented the type you still need to let Doctrine
 know about it. This can be achieved through the
-``Doctrine\ODM\MongoDB\Mapping\Types#registerType($name, $class)``
+``Doctrine\ODM\MongoDB\Types\Type#registerType($name, $class)``
 method.
 
 Here is an example:
@@ -494,8 +543,8 @@ Here is an example:
 
 As can be seen above, when registering the custom types in the
 configuration you specify a unique name for the mapping type and
-map that to the corresponding fully qualified class name. Now you
-can use your new type in your mapping like this:
+map that to the corresponding |FQCN|. Now you can use your new
+type in your mapping like this:
 
 .. configuration-block::
 
@@ -567,3 +616,6 @@ may pass an array of document class names when creating a query builder:
 
 The above will return a cursor that will allow you to iterate over all
 ``Article`` and ``Album`` documents in the collections.
+
+.. |FQCN| raw:: html
+  <abbr title="Fully-Qualified Class Name">FQCN</abbr>

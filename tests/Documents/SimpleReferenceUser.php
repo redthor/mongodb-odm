@@ -2,7 +2,6 @@
 
 namespace Documents;
 
-use Doctrine\ODM\MongoDB\Mapping\ClassMetadata;
 use Doctrine\ODM\MongoDB\Mapping\Annotations as ODM;
 
 /**
@@ -19,7 +18,7 @@ class SimpleReferenceUser
     /** @ODM\ReferenceMany(targetDocument="Documents\User", simple=true) */
     public $users = array();
 
-    /** @ODM\String */
+    /** @ODM\Field(type="string") */
     public $name;
 
     public function setUser($user)

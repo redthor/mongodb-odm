@@ -2,8 +2,6 @@
 
 namespace TestDocuments;
 
-use Doctrine\ODM\MongoDB\Mapping\ClassMetadata;
-
 class User
 {
     protected $id;
@@ -23,6 +21,10 @@ class User
     protected $groups;
 
     protected $account;
+
+    protected $tags = array();
+
+    protected $test;
 
     public function __construct()
     {

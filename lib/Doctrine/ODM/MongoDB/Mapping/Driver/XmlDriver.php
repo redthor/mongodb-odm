@@ -21,6 +21,7 @@ namespace Doctrine\ODM\MongoDB\Mapping\Driver;
 
 use Doctrine\Common\Persistence\Mapping\ClassMetadata;
 use Doctrine\Common\Persistence\Mapping\Driver\FileDriver;
+use Doctrine\ODM\MongoDB\Mapping\ClassMetadata as MappingClassMetadata;
 use Doctrine\ODM\MongoDB\Utility\CollectionHelper;
 use Doctrine\ODM\MongoDB\Mapping\ClassMetadataInfo;
 
@@ -28,8 +29,6 @@ use Doctrine\ODM\MongoDB\Mapping\ClassMetadataInfo;
  * XmlDriver is a metadata driver that enables mapping through XML files.
  *
  * @since       1.0
- * @author      Jonathan H. Wage <jonwage@gmail.com>
- * @author      Roman Borschel <roman@code-factory.org>
  */
 class XmlDriver extends FileDriver
 {
@@ -66,6 +65,8 @@ class XmlDriver extends FileDriver
             $class->isMappedSuperclass = true;
         } elseif ($xmlRoot->getName() == 'embedded-document') {
             $class->isEmbeddedDocument = true;
+        } elseif ($xmlRoot->getName() == 'query-result-document') {
+            $class->isQueryResultDocument = true;
         }
         if (isset($xmlRoot['db'])) {
             $class->setDatabase((string) $xmlRoot['db']);
@@ -85,12 +86,15 @@ class XmlDriver extends FileDriver
                 $class->setCollection((string) $xmlRoot['collection']);
             }
         }
+        if (isset($xmlRoot['writeConcern'])) {
+            $class->setWriteConcern((string) $xmlRoot['writeConcern']);
+        }
         if (isset($xmlRoot['inheritance-type'])) {
             $inheritanceType = (string) $xmlRoot['inheritance-type'];
-            $class->setInheritanceType(constant('Doctrine\ODM\MongoDB\Mapping\ClassMetadata::INHERITANCE_TYPE_' . $inheritanceType));
+            $class->setInheritanceType(constant(MappingClassMetadata::class . '::INHERITANCE_TYPE_' . $inheritanceType));
         }
         if (isset($xmlRoot['change-tracking-policy'])) {
-            $class->setChangeTrackingPolicy(constant('Doctrine\ODM\MongoDB\Mapping\ClassMetadata::CHANGETRACKING_' . strtoupper((string) $xmlRoot['change-tracking-policy'])));
+            $class->setChangeTrackingPolicy(constant(MappingClassMetadata::class . '::CHANGETRACKING_' . strtoupper((string) $xmlRoot['change-tracking-policy'])));
         }
         if (isset($xmlRoot->{'discriminator-field'})) {
             $discrField = $xmlRoot->{'discriminator-field'};
@@ -115,6 +119,9 @@ class XmlDriver extends FileDriver
             foreach ($xmlRoot->{'indexes'}->{'index'} as $index) {
                 $this->addIndex($class, $index);
             }
+        }
+        if (isset($xmlRoot->{'shard-key'})) {
+            $this->setShardKey($class, $xmlRoot->{'shard-key'}[0]);
         }
         if (isset($xmlRoot['require-indexes'])) {
             $class->setRequireIndexes('true' === (string) $xmlRoot['require-indexes']);
@@ -236,17 +243,15 @@ class XmlDriver extends FileDriver
 
     private function addEmbedMapping(ClassMetadataInfo $class, $embed, $type)
     {
-        $cascade = array_keys((array) $embed->cascade);
-        if (1 === count($cascade)) {
-            $cascade = current($cascade) ?: next($cascade);
-        }
         $attributes = $embed->attributes();
+        $defaultStrategy = $type == 'one' ? ClassMetadataInfo::STORAGE_STRATEGY_SET : CollectionHelper::DEFAULT_STRATEGY;
         $mapping = array(
-            'type'           => $type,
-            'embedded'       => true,
-            'targetDocument' => isset($attributes['target-document']) ? (string) $attributes['target-document'] : null,
-            'name'           => (string) $attributes['field'],
-            'strategy'       => isset($attributes['strategy']) ? (string) $attributes['strategy'] : CollectionHelper::DEFAULT_STRATEGY,
+            'type'            => $type,
+            'embedded'        => true,
+            'targetDocument'  => isset($attributes['target-document']) ? (string) $attributes['target-document'] : null,
+            'collectionClass' => isset($attributes['collection-class']) ? (string) $attributes['collection-class'] : null,
+            'name'            => (string) $attributes['field'],
+            'strategy'        => isset($attributes['strategy']) ? (string) $attributes['strategy'] : $defaultStrategy,
         );
         if (isset($attributes['fieldName'])) {
             $mapping['fieldName'] = (string) $attributes['fieldName'];
@@ -280,15 +285,18 @@ class XmlDriver extends FileDriver
             $cascade = current($cascade) ?: next($cascade);
         }
         $attributes = $reference->attributes();
+        $defaultStrategy = $type == 'one' ? ClassMetadataInfo::STORAGE_STRATEGY_SET : CollectionHelper::DEFAULT_STRATEGY;
         $mapping = array(
             'cascade'          => $cascade,
             'orphanRemoval'    => isset($attributes['orphan-removal']) ? ('true' === (string) $attributes['orphan-removal']) : false,
             'type'             => $type,
             'reference'        => true,
-            'simple'           => isset($attributes['simple']) ? ('true' === (string) $attributes['simple']) : false,
+            'simple'           => isset($attributes['simple']) ? ('true' === (string) $attributes['simple']) : false, // deprecated
+            'storeAs'          => isset($attributes['store-as']) ? (string) $attributes['store-as'] : ClassMetadataInfo::REFERENCE_STORE_AS_DB_REF_WITH_DB,
             'targetDocument'   => isset($attributes['target-document']) ? (string) $attributes['target-document'] : null,
+            'collectionClass'  => isset($attributes['collection-class']) ? (string) $attributes['collection-class'] : null,
             'name'             => (string) $attributes['field'],
-            'strategy'         => isset($attributes['strategy']) ? (string) $attributes['strategy'] : CollectionHelper::DEFAULT_STRATEGY,
+            'strategy'         => isset($attributes['strategy']) ? (string) $attributes['strategy'] : $defaultStrategy,
             'inversedBy'       => isset($attributes['inversed-by']) ? (string) $attributes['inversed-by'] : null,
             'mappedBy'         => isset($attributes['mapped-by']) ? (string) $attributes['mapped-by'] : null,
             'repositoryMethod' => isset($attributes['repository-method']) ? (string) $attributes['repository-method'] : null,
@@ -378,7 +386,102 @@ class XmlDriver extends FileDriver
             }
         }
 
+        if (isset($xmlIndex->{'partial-filter-expression'})) {
+            $partialFilterExpressionMapping = $xmlIndex->{'partial-filter-expression'};
+
+            if (isset($partialFilterExpressionMapping->and)) {
+                foreach ($partialFilterExpressionMapping->and as $and) {
+                    if (! isset($and->field)) {
+                        continue;
+                    }
+
+                    $partialFilterExpression = $this->getPartialFilterExpression($and->field);
+                    if (! $partialFilterExpression) {
+                        continue;
+                    }
+
+                    $options['partialFilterExpression']['$and'][] = $partialFilterExpression;
+                }
+            } elseif (isset($partialFilterExpressionMapping->field)) {
+                $partialFilterExpression = $this->getPartialFilterExpression($partialFilterExpressionMapping->field);
+
+                if ($partialFilterExpression) {
+                    $options['partialFilterExpression'] = $partialFilterExpression;
+                }
+            }
+        }
+
         $class->addIndex($keys, $options);
+    }
+
+    private function getPartialFilterExpression(\SimpleXMLElement $fields)
+    {
+        $partialFilterExpression = [];
+        foreach ($fields as $field) {
+            $operator = (string) $field['operator'] ?: null;
+
+            if (! isset($field['value'])) {
+                if (! isset($field->field)) {
+                    continue;
+                }
+
+                $nestedExpression = $this->getPartialFilterExpression($field->field);
+                if (! $nestedExpression) {
+                    continue;
+                }
+
+                $value = $nestedExpression;
+            } else {
+                $value = trim((string) $field['value']);
+            }
+
+            if ($value === 'true') {
+                $value = true;
+            } elseif ($value === 'false') {
+                $value = false;
+            } elseif (is_numeric($value)) {
+                $value = preg_match('/^[-]?\d+$/', $value) ? (integer) $value : (float) $value;
+            }
+
+            $partialFilterExpression[(string) $field['name']] = $operator ? ['$' . $operator => $value] : $value;
+        }
+
+        return $partialFilterExpression;
+    }
+
+    private function setShardKey(ClassMetadataInfo $class, \SimpleXmlElement $xmlShardkey)
+    {
+        $attributes = $xmlShardkey->attributes();
+
+        $keys = array();
+        $options = array();
+        foreach ($xmlShardkey->{'key'} as $key) {
+            $keys[(string) $key['name']] = isset($key['order']) ? (string)$key['order'] : 'asc';
+        }
+
+        if (isset($attributes['unique'])) {
+            $options['unique'] = ('true' === (string) $attributes['unique']);
+        }
+
+        if (isset($attributes['numInitialChunks'])) {
+            $options['numInitialChunks'] = (int) $attributes['numInitialChunks'];
+        }
+
+        if (isset($xmlShardkey->{'option'})) {
+            foreach ($xmlShardkey->{'option'} as $option) {
+                $value = (string) $option['value'];
+                if ($value === 'true') {
+                    $value = true;
+                } elseif ($value === 'false') {
+                    $value = false;
+                } elseif (is_numeric($value)) {
+                    $value = preg_match('/^[-]?\d+$/', $value) ? (integer) $value : (float) $value;
+                }
+                $options[(string) $option['name']] = $value;
+            }
+        }
+
+        $class->setShardKey($keys, $options);
     }
 
     /**
@@ -389,7 +492,7 @@ class XmlDriver extends FileDriver
         $result = array();
         $xmlElement = simplexml_load_file($file);
 
-        foreach (array('document', 'embedded-document', 'mapped-superclass') as $type) {
+        foreach (array('document', 'embedded-document', 'mapped-superclass', 'query-result-document') as $type) {
             if (isset($xmlElement->$type)) {
                 foreach ($xmlElement->$type as $documentElement) {
                     $documentName = (string) $documentElement['name'];

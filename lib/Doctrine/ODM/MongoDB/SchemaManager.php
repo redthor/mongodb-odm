@@ -21,6 +21,7 @@ namespace Doctrine\ODM\MongoDB;
 
 use Doctrine\ODM\MongoDB\Mapping\ClassMetadata;
 use Doctrine\ODM\MongoDB\Mapping\ClassMetadataFactory;
+use Doctrine\ODM\MongoDB\Mapping\ClassMetadataInfo;
 
 class SchemaManager
 {
@@ -54,7 +55,7 @@ class SchemaManager
     public function ensureIndexes($timeout = null)
     {
         foreach ($this->metadataFactory->getAllMetadata() as $class) {
-            if ($class->isMappedSuperclass || $class->isEmbeddedDocument) {
+            if ($class->isMappedSuperclass || $class->isEmbeddedDocument || $class->isQueryResultDocument) {
                 continue;
             }
             $this->ensureDocumentIndexes($class->name, $timeout);
@@ -72,7 +73,7 @@ class SchemaManager
     public function updateIndexes($timeout = null)
     {
         foreach ($this->metadataFactory->getAllMetadata() as $class) {
-            if ($class->isMappedSuperclass || $class->isEmbeddedDocument) {
+            if ($class->isMappedSuperclass || $class->isEmbeddedDocument || $class->isQueryResultDocument) {
                 continue;
             }
             $this->updateDocumentIndexes($class->name, $timeout);
@@ -93,8 +94,8 @@ class SchemaManager
     {
         $class = $this->dm->getClassMetadata($documentName);
 
-        if ($class->isMappedSuperclass || $class->isEmbeddedDocument) {
-            throw new \InvalidArgumentException('Cannot update document indexes for mapped super classes or embedded documents.');
+        if ($class->isMappedSuperclass || $class->isEmbeddedDocument || $class->isQueryResultDocument) {
+            throw new \InvalidArgumentException('Cannot update document indexes for mapped super classes, embedded documents or aggregation result documents.');
         }
 
         $documentIndexes = $this->getDocumentIndexes($documentName);
@@ -192,7 +193,9 @@ class SchemaManager
                     $newKeys = array();
                     foreach ($index['keys'] as $key => $v) {
                         if ($key == $fieldMapping['name']) {
-                            $key = $fieldMapping['simple'] ? $key : $key . '.$id';
+                            $key = $fieldMapping['storeAs'] === ClassMetadataInfo::REFERENCE_STORE_AS_ID
+                                ? $key
+                                : $key . '.$id';
                         }
                         $newKeys[$key] = $v;
                     }
@@ -244,8 +247,8 @@ class SchemaManager
     public function ensureDocumentIndexes($documentName, $timeout = null)
     {
         $class = $this->dm->getClassMetadata($documentName);
-        if ($class->isMappedSuperclass || $class->isEmbeddedDocument) {
-            throw new \InvalidArgumentException('Cannot create document indexes for mapped super classes or embedded documents.');
+        if ($class->isMappedSuperclass || $class->isEmbeddedDocument || $class->isQueryResultDocument) {
+            throw new \InvalidArgumentException('Cannot create document indexes for mapped super classes, embedded documents or query result documents.');
         }
         if ($indexes = $this->getDocumentIndexes($documentName)) {
             $collection = $this->dm->getDocumentCollection($class->name);
@@ -254,16 +257,10 @@ class SchemaManager
                 $options = $index['options'];
 
                 if ( ! isset($options['safe']) && ! isset($options['w'])) {
-                    if (version_compare(phpversion('mongo'), '1.3.0', '<')) {
-                        $options['safe'] = true;
-                    } else {
-                        $options['w'] = 1;
-                    }
+                    $options['w'] = 1;
                 }
 
-                if (isset($options['safe']) && ! isset($options['w']) &&
-                    version_compare(phpversion('mongo'), '1.3.0', '>=')) {
-
+                if (isset($options['safe']) && ! isset($options['w'])) {
                     $options['w'] = is_bool($options['safe']) ? (integer) $options['safe'] : $options['safe'];
                     unset($options['safe']);
                 }
@@ -284,7 +281,7 @@ class SchemaManager
     public function deleteIndexes()
     {
         foreach ($this->metadataFactory->getAllMetadata() as $class) {
-            if ($class->isMappedSuperclass || $class->isEmbeddedDocument) {
+            if ($class->isMappedSuperclass || $class->isEmbeddedDocument || $class->isQueryResultDocument) {
                 continue;
             }
             $this->deleteDocumentIndexes($class->name);
@@ -300,8 +297,8 @@ class SchemaManager
     public function deleteDocumentIndexes($documentName)
     {
         $class = $this->dm->getClassMetadata($documentName);
-        if ($class->isMappedSuperclass || $class->isEmbeddedDocument) {
-            throw new \InvalidArgumentException('Cannot delete document indexes for mapped super classes or embedded documents.');
+        if ($class->isMappedSuperclass || $class->isEmbeddedDocument || $class->isQueryResultDocument) {
+            throw new \InvalidArgumentException('Cannot delete document indexes for mapped super classes, embedded documents or query result documents.');
         }
         $this->dm->getDocumentCollection($documentName)->deleteIndexes();
     }
@@ -312,7 +309,7 @@ class SchemaManager
     public function createCollections()
     {
         foreach ($this->metadataFactory->getAllMetadata() as $class) {
-            if ($class->isMappedSuperclass || $class->isEmbeddedDocument) {
+            if ($class->isMappedSuperclass || $class->isEmbeddedDocument || $class->isQueryResultDocument) {
                 continue;
             }
             $this->createDocumentCollection($class->name);
@@ -329,8 +326,8 @@ class SchemaManager
     {
         $class = $this->dm->getClassMetadata($documentName);
 
-        if ($class->isMappedSuperclass || $class->isEmbeddedDocument) {
-            throw new \InvalidArgumentException('Cannot create document collection for mapped super classes or embedded documents.');
+        if ($class->isMappedSuperclass || $class->isEmbeddedDocument || $class->isQueryResultDocument) {
+            throw new \InvalidArgumentException('Cannot create document collection for mapped super classes, embedded documents or query result documents.');
         }
 
         if ($class->isFile()) {
@@ -354,7 +351,7 @@ class SchemaManager
     public function dropCollections()
     {
         foreach ($this->metadataFactory->getAllMetadata() as $class) {
-            if ($class->isMappedSuperclass || $class->isEmbeddedDocument) {
+            if ($class->isMappedSuperclass || $class->isEmbeddedDocument || $class->isQueryResultDocument) {
                 continue;
             }
             $this->dropDocumentCollection($class->name);
@@ -370,12 +367,10 @@ class SchemaManager
     public function dropDocumentCollection($documentName)
     {
         $class = $this->dm->getClassMetadata($documentName);
-        if ($class->isMappedSuperclass || $class->isEmbeddedDocument) {
-            throw new \InvalidArgumentException('Cannot delete document indexes for mapped super classes or embedded documents.');
+        if ($class->isMappedSuperclass || $class->isEmbeddedDocument || $class->isQueryResultDocument) {
+            throw new \InvalidArgumentException('Cannot delete document indexes for mapped super classes, embedded documents or query result documents.');
         }
-        $this->dm->getDocumentDatabase($documentName)->dropCollection(
-            $class->getCollection()
-        );
+        $this->dm->getDocumentCollection($documentName)->drop();
     }
 
     /**
@@ -384,7 +379,7 @@ class SchemaManager
     public function dropDatabases()
     {
         foreach ($this->metadataFactory->getAllMetadata() as $class) {
-            if ($class->isMappedSuperclass || $class->isEmbeddedDocument) {
+            if ($class->isMappedSuperclass || $class->isEmbeddedDocument || $class->isQueryResultDocument) {
                 continue;
             }
             $this->dropDocumentDatabase($class->name);
@@ -400,19 +395,21 @@ class SchemaManager
     public function dropDocumentDatabase($documentName)
     {
         $class = $this->dm->getClassMetadata($documentName);
-        if ($class->isMappedSuperclass || $class->isEmbeddedDocument) {
-            throw new \InvalidArgumentException('Cannot drop document database for mapped super classes or embedded documents.');
+        if ($class->isMappedSuperclass || $class->isEmbeddedDocument || $class->isQueryResultDocument) {
+            throw new \InvalidArgumentException('Cannot drop document database for mapped super classes, embedded documents or query result documents.');
         }
         $this->dm->getDocumentDatabase($documentName)->drop();
     }
 
     /**
      * Create all the mapped document databases in the metadata factory.
+     *
+     * @deprecated Databases are created automatically by MongoDB (>= 3.0). Deprecated since ODM 1.2, to be removed in ODM 2.0.
      */
     public function createDatabases()
     {
         foreach ($this->metadataFactory->getAllMetadata() as $class) {
-            if ($class->isMappedSuperclass || $class->isEmbeddedDocument) {
+            if ($class->isMappedSuperclass || $class->isEmbeddedDocument || $class->isQueryResultDocument) {
                 continue;
             }
             $this->createDocumentDatabase($class->name);
@@ -424,14 +421,17 @@ class SchemaManager
      *
      * @param string $documentName
      * @throws \InvalidArgumentException
+     *
+     * @deprecated A database is created automatically by MongoDB (>= 3.0). Deprecated since ODM 1.2, to be removed in ODM 2.0.
      */
     public function createDocumentDatabase($documentName)
     {
         $class = $this->dm->getClassMetadata($documentName);
-        if ($class->isMappedSuperclass || $class->isEmbeddedDocument) {
-            throw new \InvalidArgumentException('Cannot delete document indexes for mapped super classes or embedded documents.');
+        if ($class->isMappedSuperclass || $class->isEmbeddedDocument || $class->isQueryResultDocument) {
+            throw new \InvalidArgumentException('Cannot create databases for mapped super classes, embedded documents or query result documents.');
         }
-        $this->dm->getDocumentDatabase($documentName)->execute("function() { return true; }");
+
+        $this->dm->getDocumentDatabase($documentName)->execute('function() { return true; }');
     }
 
     /**
@@ -445,11 +445,16 @@ class SchemaManager
      *   (c) Mongo index is unique without dropDups and mapped index is unique
      *       with dropDups
      *   (d) Geospatial options differ (bits, max, min)
+     *   (e) The partialFilterExpression differs
      *
      * Regarding (c), the inverse case is not a reason to delete and
      * recreate the index, since dropDups only affects creation of
      * the unique index. Additionally, the background option is only
      * relevant to index creation and is not considered.
+     *
+     * @param array $mongoIndex Mongo index data.
+     * @param array $documentIndex Document index data.
+     * @return bool True if the indexes are equivalent, otherwise false.
      */
     public function isMongoIndexEquivalentToDocumentIndex($mongoIndex, $documentIndex)
     {
@@ -485,6 +490,126 @@ class SchemaManager
             }
         }
 
+        if (empty($mongoIndex['partialFilterExpression']) xor empty($documentIndexOptions['partialFilterExpression'])) {
+            return false;
+        }
+
+        if (isset($mongoIndex['partialFilterExpression']) && isset($documentIndexOptions['partialFilterExpression']) &&
+            $mongoIndex['partialFilterExpression'] !== $documentIndexOptions['partialFilterExpression']) {
+
+            return false;
+        }
+
         return true;
+    }
+
+    /**
+     * Ensure collections are sharded for all documents that can be loaded with the
+     * metadata factory.
+     *
+     * @param array $indexOptions Options for `ensureIndex` command. It's performed on an existing collections
+     *
+     * @throws MongoDBException
+     */
+    public function ensureSharding(array $indexOptions = array())
+    {
+        foreach ($this->metadataFactory->getAllMetadata() as $class) {
+            if ($class->isMappedSuperclass || !$class->isSharded()) {
+                continue;
+            }
+
+            $this->ensureDocumentSharding($class->name, $indexOptions);
+        }
+    }
+
+    /**
+     * Ensure sharding for collection by document name.
+     *
+     * @param string $documentName
+     * @param array  $indexOptions Options for `ensureIndex` command. It's performed on an existing collections.
+     *
+     * @throws MongoDBException
+     */
+    public function ensureDocumentSharding($documentName, array $indexOptions = array())
+    {
+        $class = $this->dm->getClassMetadata($documentName);
+        if ( ! $class->isSharded()) {
+            return;
+        }
+
+        $this->enableShardingForDbByDocumentName($documentName);
+
+        $try = 0;
+        do {
+            $result = $this->runShardCollectionCommand($documentName);
+            $done = true;
+
+            // Need to check error message because MongoDB 3.0 does not return a code for this error
+            if ($result['ok'] != 1 && strpos($result['errmsg'], 'please create an index that starts') !== false) {
+                // The proposed key is not returned when using mongo-php-adapter with ext-mongodb.
+                // See https://github.com/mongodb/mongo-php-driver/issues/296 for details
+                if (isset($result['proposedKey'])) {
+                    $key = $result['proposedKey'];
+                } else {
+                    $key = $this->dm->getClassMetadata($documentName)->getShardKey()['keys'];
+                }
+
+                $this->dm->getDocumentCollection($documentName)->ensureIndex($key, $indexOptions);
+                $done = false;
+                $try++;
+            }
+        } while (! $done && $try < 2);
+
+        // Starting with MongoDB 3.2, this command returns code 20 when a collection is already sharded.
+        // For older MongoDB versions, check the error message
+        if ($result['ok'] == 1 || (isset($result['code']) && $result['code'] == 20) || $result['errmsg'] == 'already sharded') {
+            return;
+        }
+
+        throw MongoDBException::failedToEnsureDocumentSharding($documentName, $result['errmsg']);
+    }
+
+    /**
+     * Enable sharding for database which contains documents with given name.
+     *
+     * @param string $documentName
+     *
+     * @throws MongoDBException
+     */
+    public function enableShardingForDbByDocumentName($documentName)
+    {
+        $dbName = $this->dm->getDocumentDatabase($documentName)->getName();
+        $adminDb = $this->dm->getConnection()->selectDatabase('admin');
+        $result = $adminDb->command(array('enableSharding' => $dbName));
+
+        // Error code is only available with MongoDB 3.2. MongoDB 3.0 only returns a message
+        // Thus, check code if it exists and fall back on error message
+        if ($result['ok'] == 1 || (isset($result['code']) && $result['code'] == 23) || $result['errmsg'] == 'already enabled') {
+            return;
+        }
+
+        throw MongoDBException::failedToEnableSharding($dbName, $result['errmsg']);
+    }
+
+    /**
+     * @param $documentName
+     *
+     * @return array
+     */
+    private function runShardCollectionCommand($documentName)
+    {
+        $class = $this->dm->getClassMetadata($documentName);
+        $dbName = $this->dm->getDocumentDatabase($documentName)->getName();
+        $shardKey = $class->getShardKey();
+        $adminDb = $this->dm->getConnection()->selectDatabase('admin');
+
+        $result = $adminDb->command(
+            array(
+                'shardCollection' => $dbName . '.' . $class->getCollection(),
+                'key'             => $shardKey['keys']
+            )
+        );
+
+        return $result;
     }
 }

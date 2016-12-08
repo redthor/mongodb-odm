@@ -163,5 +163,10 @@ of several common elements:
             dropDups: true
             safe: true
 
-Be aware that class-names specified in the YAML files should be
-fully qualified.
+Be aware that class-names specified in the YAML files should be fully qualified.
+
+.. note::
+
+    The ``name`` property is an optional setting to change  name of the field
+    **in the database**. Specifying it is optional and defaults to the name
+    of mapped field.

@@ -10,7 +10,7 @@ class Bar
     /** @ODM\Id */
     private $id;
 
-    /** @ODM\String */
+    /** @ODM\Field(type="string") */
     private $name;
 
     /** @ODM\EmbedMany(targetDocument="Documents\Bars\Location") */
@@ -44,5 +44,10 @@ class Bar
     public function getLocations()
     {
         return $this->locations;
+    }
+    
+    public function setLocations($locations)
+    {
+        $this->locations = $locations;
     }
 }

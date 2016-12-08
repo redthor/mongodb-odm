@@ -136,7 +136,7 @@ abstract class ChildDocument
     /** @ODM\Id */
     protected $id;
 
-    /** @ODM\String */
+    /** @ODM\Field(type="string") */
     protected $type;
 
     public function __construct($type)
@@ -197,7 +197,7 @@ class ParentDocumentWithDiscriminator extends ParentDocument
 /**
  * @ODM\Document(collection="discriminator_child")
  * @ODM\InheritanceType("SINGLE_COLLECTION")
- * @ODM\DiscriminatorField(fieldName="discriminator")
+ * @ODM\DiscriminatorField("discriminator")
  * @ODM\DiscriminatorMap({"simple"="ChildDocumentWithDiscriminatorSimple", "complex"="ChildDocumentWithDiscriminatorComplex"})
  * @ODM\DefaultDiscriminatorValue("simple")
  */
@@ -214,7 +214,7 @@ class ChildDocumentWithDiscriminatorSimple extends ChildDocumentWithDiscriminato
 /** @ODM\Document(collection="discriminator_child") */
 class ChildDocumentWithDiscriminatorComplex extends ChildDocumentWithDiscriminatorSimple
 {
-    /** @ODM\String */
+    /** @ODM\Field(type="string") */
     protected $value;
 
     public function __construct($type, $value)

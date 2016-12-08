@@ -23,7 +23,6 @@ namespace Doctrine\ODM\MongoDB;
  * Class for all exceptions related to the Doctrine MongoDB ODM
  *
  * @since       1.0
- * @author      Jonathan H. Wage <jonwage@gmail.com>
  */
 class MongoDBException extends \Exception
 {
@@ -96,13 +95,15 @@ class MongoDBException extends \Exception
      */
     public static function cannotPersistMappedSuperclass($className)
     {
-        return new self('Cannot persist an embedded document or mapped superclass ' . $className);
+        return new self('Cannot persist an embedded document, aggregation result document or mapped superclass ' . $className);
     }
 
     /**
      * @param string $className
      * @param string $unindexedFields
      * @return MongoDBException
+     *
+     * @deprecated method was deprecated in 1.2 and will be removed in 2.0
      */
     public static function queryNotIndexed($className, $unindexedFields)
     {
@@ -130,7 +131,7 @@ class MongoDBException extends \Exception
     public static function invalidValueForType($type, $expected, $got)
     {
         if (is_array($expected)) {
-            $expected = sprintf("%s or %s",
+            $expected = sprintf('%s or %s',
                 join(', ', array_slice($expected, 0, -1)),
                 end($expected)
             );
@@ -143,5 +144,51 @@ class MongoDBException extends \Exception
             $gotType = 'scalar';
         }
         return new self(sprintf('%s type requires value of type %s, %s given', $type, $expected, $gotType));
+    }
+
+    /**
+     * @param string $field
+     * @param string $className
+     * @return MongoDBException
+     */
+    public static function shardKeyFieldCannotBeChanged($field, $className)
+    {
+        return new self(sprintf('Shard key field "%s" in class "%s" cannot be changed.', $field, $className));
+    }
+
+    /**
+     * @param string $field
+     * @param string $className
+     * @return MongoDBException
+     */
+    public static function shardKeyFieldMissing($field, $className)
+    {
+        return new self(sprintf('Shard key field "%s" in class "%s" is missing.', $field, $className));
+    }
+
+    /**
+     * @param string $dbName
+     * @param string $errorMessage
+     * @return MongoDBException
+     */
+    public static function failedToEnableSharding($dbName, $errorMessage)
+    {
+        return new self(sprintf('Failed to enable sharding for database "%s". Error from MongoDB: %s',
+            $dbName,
+            $errorMessage
+        ));
+    }
+
+    /**
+     * @param string $className
+     * @param string $errorMessage
+     * @return MongoDBException
+     */
+    public static function failedToEnsureDocumentSharding($className, $errorMessage)
+    {
+        return new self(sprintf('Failed to ensure sharding for document "%s". Error from MongoDB: %s',
+            $className,
+            $errorMessage
+        ));
     }
 }

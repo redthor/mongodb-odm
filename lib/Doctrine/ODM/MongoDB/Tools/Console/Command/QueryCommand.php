@@ -19,6 +19,7 @@
 
 namespace Doctrine\ODM\MongoDB\Tools\Console\Command;
 
+use Doctrine\Common\Util\Debug;
 use Symfony\Component\Console\Input\InputArgument;
 use Symfony\Component\Console\Input\InputOption;
 use Symfony\Component\Console;
@@ -27,7 +28,6 @@ use Symfony\Component\Console;
  * Command to query mongodb and inspect the outputted results from your document classes.
  *
  * @since   1.0
- * @author  Jonathan Wage <jonwage@gmail.com>
  */
 class QueryCommand extends Console\Command\Command
 {
@@ -104,7 +104,7 @@ EOT
         }
 
         foreach ($qb->getQuery() as $result) {
-            \Doctrine\Common\Util\Debug::dump($result, $depth);
+            Debug::dump($result, $depth);
         }
     }
 }

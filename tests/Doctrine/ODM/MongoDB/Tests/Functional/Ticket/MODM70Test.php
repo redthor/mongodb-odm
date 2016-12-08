@@ -2,7 +2,6 @@
 
 namespace Doctrine\ODM\MongoDB\Tests\Functional\Ticket;
 
-use Doctrine\Common\Collections\ArrayCollection;
 use Doctrine\ODM\MongoDB\Mapping\Annotations as ODM;
 
 class MODM70Test extends \Doctrine\ODM\MongoDB\Tests\BaseTest
@@ -16,7 +15,7 @@ class MODM70Test extends \Doctrine\ODM\MongoDB\Tests\BaseTest
 		$this->dm->refresh($avatar);
 
 		$avatar->addAvatarPart(new AvatarPart('#FFF'));
-		
+
 		$this->dm->flush();
 		$this->dm->refresh($avatar);
 
@@ -38,13 +37,13 @@ class Avatar
 	protected $id;
 
 	/**
-	 * @ODM\String(name="na")
+	 * @ODM\Field(name="na", type="string")
 	 * @var string
 	 */
 	protected $name;
 
 	/**
-	 * @ODM\Int(name="sex")
+	 * @ODM\Field(name="sex", type="int")
 	 * @var int
 	 */
 	protected $sex;
@@ -120,7 +119,7 @@ class Avatar
 class AvatarPart
 {
 	/**
-	 * @ODM\String(name="col")
+	 * @ODM\Field(name="col", type="string")
 	 * @var string
 	 */
 	protected $color;

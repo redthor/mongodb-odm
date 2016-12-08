@@ -3,13 +3,14 @@
 namespace Doctrine\ODM\MongoDB\Tests\Mapping\Driver;
 
 use Doctrine\ODM\MongoDB\Mapping\ClassMetadata;
+use Doctrine\ODM\MongoDB\Mapping\ClassMetadataInfo;
 
+require_once 'fixtures/InvalidPartialFilterDocument.php';
+require_once 'fixtures/PartialFilterDocument.php';
 require_once 'fixtures/User.php';
 require_once 'fixtures/EmbeddedDocument.php';
+require_once 'fixtures/QueryResultDocument.php';
 
-/**
- * @author Bulat Shakirzyanov <bulat@theopenskyproject.com>
- */
 abstract class AbstractDriverTest extends \PHPUnit_Framework_TestCase
 {
     protected $driver;
@@ -58,7 +59,8 @@ abstract class AbstractDriverTest extends \PHPUnit_Framework_TestCase
             'isOwningSide' => true,
             'nullable' => false,
             'unique' => true,
-            'sparse' => true
+            'sparse' => true,
+            'strategy' => ClassMetadataInfo::STORAGE_STRATEGY_SET,
         ), $classMetadata->fieldMappings['username']);
         
         $this->assertEquals(array(
@@ -79,7 +81,8 @@ abstract class AbstractDriverTest extends \PHPUnit_Framework_TestCase
             'isCascadeRemove' => false,
             'isInverseSide' => false,
             'isOwningSide' => true,
-            'nullable' => false
+            'nullable' => false,
+            'strategy' => ClassMetadataInfo::STORAGE_STRATEGY_SET,
         ), $classMetadata->fieldMappings['createdAt']);
 
         $this->assertEquals(array(
@@ -94,6 +97,7 @@ abstract class AbstractDriverTest extends \PHPUnit_Framework_TestCase
             'isInverseSide' => false,
             'isOwningSide' => true,
             'nullable' => false,
+            'strategy' => ClassMetadataInfo::STORAGE_STRATEGY_SET,
         ), $classMetadata->fieldMappings['tags']);
 
         $this->assertEquals(array(
@@ -103,6 +107,7 @@ abstract class AbstractDriverTest extends \PHPUnit_Framework_TestCase
             'type' => 'one',
             'embedded' => true,
             'targetDocument' => 'Documents\Address',
+            'collectionClass' => null,
             'isCascadeDetach' => true,
             'isCascadeMerge' => true,
             'isCascadePersist' => true,
@@ -111,7 +116,7 @@ abstract class AbstractDriverTest extends \PHPUnit_Framework_TestCase
             'isInverseSide' => false,
             'isOwningSide' => true,
             'nullable' => false,
-            'strategy' => 'pushAll',
+            'strategy' => ClassMetadataInfo::STORAGE_STRATEGY_SET,
         ), $classMetadata->fieldMappings['address']);
 
         $this->assertEquals(array(
@@ -121,6 +126,7 @@ abstract class AbstractDriverTest extends \PHPUnit_Framework_TestCase
             'type' => 'many',
             'embedded' => true,
             'targetDocument' => 'Documents\Phonenumber',
+            'collectionClass' => null,
             'isCascadeDetach' => true,
             'isCascadeMerge' => true,
             'isCascadePersist' => true,
@@ -129,7 +135,7 @@ abstract class AbstractDriverTest extends \PHPUnit_Framework_TestCase
             'isInverseSide' => false,
             'isOwningSide' => true,
             'nullable' => false,
-            'strategy' => 'pushAll',
+            'strategy' => ClassMetadataInfo::STORAGE_STRATEGY_PUSH_ALL,
         ), $classMetadata->fieldMappings['phonenumbers']);
 
         $this->assertEquals(array(
@@ -138,8 +144,10 @@ abstract class AbstractDriverTest extends \PHPUnit_Framework_TestCase
             'name' => 'profile',
             'type' => 'one',
             'reference' => true,
+            'storeAs' => ClassMetadataInfo::REFERENCE_STORE_AS_ID,
             'simple' => true,
             'targetDocument' => 'Documents\Profile',
+            'collectionClass' => null,
             'cascade' => array('remove', 'persist', 'refresh', 'merge', 'detach'),
             'isCascadeDetach' => true,
             'isCascadeMerge' => true,
@@ -149,7 +157,7 @@ abstract class AbstractDriverTest extends \PHPUnit_Framework_TestCase
             'isInverseSide' => false,
             'isOwningSide' => true,
             'nullable' => false,
-            'strategy' => 'pushAll',
+            'strategy' => ClassMetadataInfo::STORAGE_STRATEGY_SET,
             'inversedBy' => null,
             'mappedBy' => null,
             'repositoryMethod' => null,
@@ -164,8 +172,10 @@ abstract class AbstractDriverTest extends \PHPUnit_Framework_TestCase
             'name' => 'account',
             'type' => 'one',
             'reference' => true,
+            'storeAs' => ClassMetadataInfo::REFERENCE_STORE_AS_DB_REF_WITH_DB,
             'simple' => false,
             'targetDocument' => 'Documents\Account',
+            'collectionClass' => null,
             'cascade' => array('remove', 'persist', 'refresh', 'merge', 'detach'),
             'isCascadeDetach' => true,
             'isCascadeMerge' => true,
@@ -175,7 +185,7 @@ abstract class AbstractDriverTest extends \PHPUnit_Framework_TestCase
             'isInverseSide' => false,
             'isOwningSide' => true,
             'nullable' => false,
-            'strategy' => 'pushAll',
+            'strategy' => ClassMetadataInfo::STORAGE_STRATEGY_SET,
             'inversedBy' => null,
             'mappedBy' => null,
             'repositoryMethod' => null,
@@ -190,8 +200,10 @@ abstract class AbstractDriverTest extends \PHPUnit_Framework_TestCase
             'name' => 'groups',
             'type' => 'many',
             'reference' => true,
+            'storeAs' => ClassMetadataInfo::REFERENCE_STORE_AS_DB_REF_WITH_DB,
             'simple' => false,
             'targetDocument' => 'Documents\Group',
+            'collectionClass' => null,
             'cascade' => array('remove', 'persist', 'refresh', 'merge', 'detach'),
             'isCascadeDetach' => true,
             'isCascadeMerge' => true,
@@ -201,7 +213,7 @@ abstract class AbstractDriverTest extends \PHPUnit_Framework_TestCase
             'isInverseSide' => false,
             'isOwningSide' => true,
             'nullable' => false,
-            'strategy' => 'pushAll',
+            'strategy' => ClassMetadataInfo::STORAGE_STRATEGY_PUSH_ALL,
             'inversedBy' => null,
             'mappedBy' => null,
             'repositoryMethod' => null,
@@ -240,7 +252,77 @@ abstract class AbstractDriverTest extends \PHPUnit_Framework_TestCase
             'isInverseSide' => false,
             'isOwningSide' => true,
             'nullable' => false,
+            'strategy' => ClassMetadataInfo::STORAGE_STRATEGY_SET,
         ), $classMetadata->fieldMappings['name']);
+
+        $classMetadata = new ClassMetadata('TestDocuments\QueryResultDocument');
+        $this->driver->loadMetadataForClass('TestDocuments\QueryResultDocument', $classMetadata);
+
+        $this->assertEquals(array(
+            'fieldName' => 'name',
+            'name' => 'name',
+            'type' => 'string',
+            'isCascadeDetach' => false,
+            'isCascadeMerge' => false,
+            'isCascadePersist' => false,
+            'isCascadeRefresh' => false,
+            'isCascadeRemove' => false,
+            'isInverseSide' => false,
+            'isOwningSide' => true,
+            'nullable' => false,
+            'strategy' => ClassMetadataInfo::STORAGE_STRATEGY_SET,
+        ), $classMetadata->fieldMappings['name']);
+
+        $this->assertEquals(array(
+            'fieldName' => 'count',
+            'name' => 'count',
+            'type' => 'integer',
+            'isCascadeDetach' => false,
+            'isCascadeMerge' => false,
+            'isCascadePersist' => false,
+            'isCascadeRefresh' => false,
+            'isCascadeRemove' => false,
+            'isInverseSide' => false,
+            'isOwningSide' => true,
+            'nullable' => false,
+            'strategy' => ClassMetadataInfo::STORAGE_STRATEGY_SET,
+        ), $classMetadata->fieldMappings['count']);
     }
 
+    public function testPartialFilterExpressions()
+    {
+        $classMetadata = new ClassMetadata('TestDocuments\PartialFilterDocument');
+        $this->driver->loadMetadataForClass('TestDocuments\PartialFilterDocument', $classMetadata);
+
+        $this->assertEquals([
+            [
+                'keys' => ['fieldA' => 1],
+                'options' => [
+                    'partialFilterExpression' => [
+                        'version' => ['$gt' => 1],
+                        'discr' => ['$eq' => 'default'],
+                    ],
+                ],
+            ],
+            [
+                'keys' => ['fieldB' => 1],
+                'options' => [
+                    'partialFilterExpression' => [
+                        '$and' => [
+                            ['version' => ['$gt' => 1]],
+                            ['discr' => ['$eq' => 'default']],
+                        ],
+                    ],
+                ],
+            ],
+            [
+                'keys' => ['fieldC' => 1],
+                'options' => [
+                    'partialFilterExpression' => [
+                        'embedded' => ['foo' => 'bar'],
+                    ],
+                ],
+            ],
+        ], $classMetadata->getIndexes());
+    }
 }

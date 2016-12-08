@@ -3,7 +3,6 @@
 namespace Doctrine\ODM\MongoDB\Tests\Mapping;
 
 use Doctrine\ODM\MongoDB\Mapping\ClassMetadata;
-use Doctrine\ODM\MongoDB\Events;
 use Doctrine\ODM\MongoDB\Mapping\Annotations as ODM;
 
 class AnnotationDriverTest extends AbstractMappingDriverTest
@@ -11,9 +10,9 @@ class AnnotationDriverTest extends AbstractMappingDriverTest
     // @TODO: This can be a generic test for all drivers
     public function testFieldInheritance()
     {
-        $super = $this->dm->getClassMetadata(__NAMESPACE__ . '\AnnotationDriverTestSuper');
-        $parent = $this->dm->getClassMetadata(__NAMESPACE__ . '\AnnotationDriverTestParent');
-        $child = $this->dm->getClassMetadata(__NAMESPACE__ . '\AnnotationDriverTestChild');
+        $super = $this->dm->getClassMetadata(AnnotationDriverTestSuper::class);
+        $parent = $this->dm->getClassMetadata(AnnotationDriverTestParent::class);
+        $child = $this->dm->getClassMetadata(AnnotationDriverTestChild::class);
 
         $this->assertFalse($super->hasField('id'), 'MappedSuperclass does not register its own public field');
         $this->assertFalse($super->hasField('protected'), 'MappedSuperclass does not register its own protected field');
@@ -40,7 +39,7 @@ class AnnotationDriverTest extends AbstractMappingDriverTest
 
         $this->assertArrayNotHasKey('declared', $parent->fieldMappings['id'], 'Document does not track "declared" for non-inherited public field from MappedSuperclass parent');
         $this->assertArrayNotHasKey('declared', $parent->fieldMappings['protected'], 'Document does not track "declared" for non-inherited protected field from MappedSuperclass parent');
-        $this->assertEquals(__NAMESPACE__ . '\AnnotationDriverTestSuper', $parent->fieldMappings['private']['declared'], 'Non-inherited private field from MappedSuperclass parent is declared in MappedSuperclass parent');
+        $this->assertEquals(AnnotationDriverTestSuper::class, $parent->fieldMappings['private']['declared'], 'Non-inherited private field from MappedSuperclass parent is declared in MappedSuperclass parent');
         $this->assertArrayNotHasKey('declared', $parent->fieldMappings['foo'], 'Document does not track "declared" for its own public field');
 
         $this->assertTrue($child->hasField('id'), 'Document does have public field from MappedSuperclass grandparent');
@@ -54,10 +53,10 @@ class AnnotationDriverTest extends AbstractMappingDriverTest
         $this->assertTrue($child->hasField('bar'), 'Document does register its own public field');
         $this->assertFalse($child->isInheritedField('bar'), 'Document does not inherit its own field');
 
-        $this->assertEquals(__NAMESPACE__ . '\AnnotationDriverTestParent', $child->fieldMappings['id']['declared'], 'Inherited public field from MappedSuperclass grandparent is declared in Document parent');
-        $this->assertEquals(__NAMESPACE__ . '\AnnotationDriverTestParent', $child->fieldMappings['protected']['declared'], 'Inherited protected field from MappedSuperclass grandparent is declared in Document parent');
-        $this->assertEquals(__NAMESPACE__ . '\AnnotationDriverTestSuper', $child->fieldMappings['private']['declared'], 'Inherited private field from MappedSuperclass grandparent is declared in MappedSuperclass grandparent');
-        $this->assertEquals(__NAMESPACE__ . '\AnnotationDriverTestParent', $child->fieldMappings['foo']['declared'], 'Inherited public field from Document parent is declared in Document parent');
+        $this->assertEquals(AnnotationDriverTestParent::class, $child->fieldMappings['id']['declared'], 'Inherited public field from MappedSuperclass grandparent is declared in Document parent');
+        $this->assertEquals(AnnotationDriverTestParent::class, $child->fieldMappings['protected']['declared'], 'Inherited protected field from MappedSuperclass grandparent is declared in Document parent');
+        $this->assertEquals(AnnotationDriverTestSuper::class, $child->fieldMappings['private']['declared'], 'Inherited private field from MappedSuperclass grandparent is declared in MappedSuperclass grandparent');
+        $this->assertEquals(AnnotationDriverTestParent::class, $child->fieldMappings['foo']['declared'], 'Inherited public field from Document parent is declared in Document parent');
     }
 
     /**
@@ -132,12 +131,33 @@ class AnnotationDriverTest extends AbstractMappingDriverTest
      */
     public function testGetClassNamesReturnsOnlyTheAppropriateClasses()
     {
-        $extraneousClassName = __NAMESPACE__.'\ColumnWithoutType';
+        $extraneousClassName = ColumnWithoutType::class;
 
         $annotationDriver = $this->_loadDriverForCMSDocuments();
         $classes = $annotationDriver->getAllClassNames();
 
         $this->assertNotContains($extraneousClassName, $classes);
+    }
+
+    /**
+     * @expectedException \Doctrine\ODM\MongoDB\Mapping\MappingException
+     * @expectedExceptionMessage Embedded document can't have shard key
+     */
+    public function testEmbeddedClassCantHaveShardKey()
+    {
+        $this->dm->getClassMetadata(AnnotationDriverEmbeddedWithShardKey::class);
+    }
+
+    public function testDocumentAnnotationCanSpecifyWriteConcern()
+    {
+        $cm = $this->dm->getClassMetadata(AnnotationDriverTestWriteConcernMajority::class);
+        $this->assertEquals('majority', $cm->writeConcern);
+
+        $cm = $this->dm->getClassMetadata(AnnotationDriverTestWriteConcernUnacknowledged::class);
+        $this->assertSame(0, $cm->writeConcern);
+
+        $cm = $this->dm->getClassMetadata(ColumnWithoutType::class);
+        $this->assertNull($cm->writeConcern);
     }
 
     protected function _loadDriverForCMSDocuments()
@@ -167,23 +187,51 @@ class AnnotationDriverTestSuper
     /** @ODM\Id */
     public $id;
 
-    /** @ODM\String */
+    /** @ODM\Field(type="string") */
     protected $protected;
 
-    /** @ODM\String */
+    /** @ODM\Field(type="string") */
     private $private;
 }
 
 /** @ODM\Document */
 class AnnotationDriverTestParent extends AnnotationDriverTestSuper
 {
-    /** @ODM\String */
+    /** @ODM\Field(type="string") */
     public $foo;
 }
 
 /** @ODM\Document */
 class AnnotationDriverTestChild extends AnnotationDriverTestParent
 {
-    /** @ODM\String */
+    /** @ODM\Field(type="string") */
     public $bar;
+}
+
+/**
+ * @ODM\EmbeddedDocument
+ * @ODM\ShardKey(keys={"foo"="asc"})
+ */
+class AnnotationDriverEmbeddedWithShardKey
+{
+    /** @ODM\Field(type="string") */
+    public $foo;
+}
+
+/**
+ * @ODM\Document(writeConcern="majority")
+ */
+class AnnotationDriverTestWriteConcernMajority
+{
+    /** @ODM\Id */
+    public $id;
+}
+
+/**
+ * @ODM\Document(writeConcern=0)
+ */
+class AnnotationDriverTestWriteConcernUnacknowledged
+{
+    /** @ODM\Id */
+    public $id;
 }

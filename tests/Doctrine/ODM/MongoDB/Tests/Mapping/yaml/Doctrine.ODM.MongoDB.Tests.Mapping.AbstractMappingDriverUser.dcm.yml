@@ -1,6 +1,7 @@
 Doctrine\ODM\MongoDB\Tests\Mapping\AbstractMappingDriverUser:
   type: document
   collection: cms_users
+  writeConcern: 1
   discriminatorField:
     fieldName: discr
   discriminatorMap:
@@ -31,6 +32,8 @@ Doctrine\ODM\MongoDB\Tests\Mapping\AbstractMappingDriverUser:
       index:
         order: asc
         expireAfterSeconds: 3600
+    roles:
+      type: collection
   indexes:
     index1:
       keys:
@@ -44,6 +47,19 @@ Doctrine\ODM\MongoDB\Tests\Mapping\AbstractMappingDriverUser:
       options:
         unique: true
         dropDups: true
+    index3:
+      keys:
+        lock: asc
+      options:
+        partialFilterExpression:
+          version: { $gt: 1 }
+          discr: { $eq: 'default' }
+  shardKey:
+    keys:
+      name: asc
+    options:
+      unique: true
+      numInitialChunks: 4096
   referenceOne:
     address:
       targetDocument: Address
@@ -51,6 +67,7 @@ Doctrine\ODM\MongoDB\Tests\Mapping\AbstractMappingDriverUser:
   referenceMany:
     phonenumbers:
       targetDocument: Phonenumber
+      collectionClass: PhonenumberCollection
       cascade: [ persist ]
       discriminatorField: discr
       discriminatorMap:
@@ -70,6 +87,7 @@ Doctrine\ODM\MongoDB\Tests\Mapping\AbstractMappingDriverUser:
   embedMany:
     otherPhonenumbers:
       targetDocument: Phonenumber
+      collectionClass: PhonenumberCollection
       discriminatorField: discr
       discriminatorMap:
         home: HomePhonenumber

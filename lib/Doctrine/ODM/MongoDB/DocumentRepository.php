@@ -20,10 +20,12 @@
 namespace Doctrine\ODM\MongoDB;
 
 use Doctrine\Common\Collections\ArrayCollection;
+use Doctrine\Common\Collections\Collection;
 use Doctrine\Common\Collections\Criteria;
 use Doctrine\Common\Collections\Selectable;
+use Doctrine\Common\Inflector\Inflector;
 use Doctrine\Common\Persistence\ObjectRepository;
-use Doctrine\ODM\MongoDB\Mapping\MappingException;
+use Doctrine\ODM\MongoDB\Mapping\ClassMetadata;
 use Doctrine\ODM\MongoDB\Query\QueryExpressionVisitor;
 
 /**
@@ -34,8 +36,6 @@ use Doctrine\ODM\MongoDB\Query\QueryExpressionVisitor;
  * write their own repositories with business-specific methods to locate documents.
  *
  * @since       1.0
- * @author      Jonathan H. Wage <jonwage@gmail.com>
- * @author      Roman Borschel <roman@code-factory.org>
  */
 class DocumentRepository implements ObjectRepository, Selectable
 {
@@ -55,33 +55,44 @@ class DocumentRepository implements ObjectRepository, Selectable
     protected $uow;
 
     /**
-     * @var \Doctrine\ODM\MongoDB\Mapping\ClassMetadata
+     * @var ClassMetadata
      */
     protected $class;
 
     /**
-     * Initializes a new <tt>DocumentRepository</tt>.
+     * Initializes this instance with the specified document manager, unit of work and
+     * class metadata.
      *
      * @param DocumentManager $dm The DocumentManager to use.
      * @param UnitOfWork $uow The UnitOfWork to use.
-     * @param Mapping\ClassMetadata $classMetadata The class descriptor.
+     * @param ClassMetadata $classMetadata The class metadata.
      */
-    public function __construct(DocumentManager $dm, UnitOfWork $uow, Mapping\ClassMetadata $class)
+    public function __construct(DocumentManager $dm, UnitOfWork $uow, ClassMetadata $classMetadata)
     {
-        $this->documentName = $class->name;
+        $this->documentName = $classMetadata->name;
         $this->dm = $dm;
         $this->uow = $uow;
-        $this->class = $class;
+        $this->class = $classMetadata;
     }
 
     /**
-     * Create a new Query\Builder instance that is prepopulated for this document name
+     * Creates a new Query\Builder instance that is preconfigured for this document name.
      *
      * @return Query\Builder $qb
      */
     public function createQueryBuilder()
     {
         return $this->dm->createQueryBuilder($this->documentName);
+    }
+
+    /**
+     * Creates a new Aggregation\Builder instance that is prepopulated for this document name.
+     *
+     * @return Aggregation\Builder
+     */
+    public function createAggregationBuilder()
+    {
+        return $this->dm->createAggregationBuilder($this->documentName);
     }
 
     /**
@@ -93,19 +104,20 @@ class DocumentRepository implements ObjectRepository, Selectable
     }
 
     /**
-     * Finds a document by its identifier
+     * Finds a document matching the specified identifier. Optionally a lock mode and
+     * expected version may be specified.
      *
-     * @param string|object $id The identifier
-     * @param int $lockMode
-     * @param int $lockVersion
+     * @param mixed $id Identifier.
+     * @param int $lockMode Optional. Lock mode; one of the LockMode constants.
+     * @param int $lockVersion Optional. Expected version.
      * @throws Mapping\MappingException
      * @throws LockException
-     * @return object The document.
+     * @return object|null The document, if found, otherwise null.
      */
     public function find($id, $lockMode = LockMode::NONE, $lockVersion = null)
     {
         if ($id === null) {
-            return;
+            return null;
         }
 
         /* TODO: What if the ID object has a field with the same name as the
@@ -121,7 +133,7 @@ class DocumentRepository implements ObjectRepository, Selectable
 
         // Check identity map first
         if ($document = $this->uow->tryGetById($id, $this->class)) {
-            if ($lockMode != LockMode::NONE) {
+            if ($lockMode !== LockMode::NONE) {
                 $this->dm->lock($document, $lockMode, $lockVersion);
             }
 
@@ -130,11 +142,11 @@ class DocumentRepository implements ObjectRepository, Selectable
 
         $criteria = array('_id' => $id);
 
-        if ($lockMode == LockMode::NONE) {
+        if ($lockMode === LockMode::NONE) {
             return $this->getDocumentPersister()->load($criteria);
         }
 
-        if ($lockMode == LockMode::OPTIMISTIC) {
+        if ($lockMode === LockMode::OPTIMISTIC) {
             if (!$this->class->isVersioned) {
                 throw LockException::notVersioned($this->documentName);
             }
@@ -197,24 +209,23 @@ class DocumentRepository implements ObjectRepository, Selectable
      */
     public function __call($method, $arguments)
     {
-        if (substr($method, 0, 6) == 'findBy') {
+        if (strpos($method, 'findBy') === 0) {
             $by = substr($method, 6, strlen($method));
             $method = 'findBy';
-        } elseif (substr($method, 0, 9) == 'findOneBy') {
+        } elseif (strpos($method, 'findOneBy') === 0) {
             $by = substr($method, 9, strlen($method));
             $method = 'findOneBy';
         } else {
             throw new \BadMethodCallException(
-                "Undefined method '$method'. The method name must start with " .
-                "either findBy or findOneBy!"
+                "Undefined method: '$method'. The method name must start with 'findBy' or 'findOneBy'!"
             );
         }
 
-        if ( ! isset($arguments[0])) {
+        if (!isset($arguments[0])) {
             throw MongoDBException::findByRequiresParameter($method . $by);
         }
 
-        $fieldName = lcfirst(\Doctrine\Common\Util\Inflector::classify($by));
+        $fieldName = Inflector::camelize($by);
 
         if ($this->class->hasField($fieldName)) {
             return $this->$method(array($fieldName => $arguments[0]));

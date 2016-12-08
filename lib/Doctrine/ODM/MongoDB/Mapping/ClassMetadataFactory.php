@@ -24,9 +24,13 @@ use Doctrine\Common\Persistence\Mapping\ClassMetadata as ClassMetadataInterface;
 use Doctrine\Common\Persistence\Mapping\ReflectionService;
 use Doctrine\ODM\MongoDB\Configuration;
 use Doctrine\ODM\MongoDB\DocumentManager;
+use Doctrine\ODM\MongoDB\Event\LoadClassMetadataEventArgs;
 use Doctrine\ODM\MongoDB\Events;
-use Doctrine\ODM\MongoDB\Mapping\ClassMetadata;
-use Doctrine\ODM\MongoDB\Mapping\MappingException;
+use Doctrine\ODM\MongoDB\Id\AbstractIdGenerator;
+use Doctrine\ODM\MongoDB\Id\AlnumGenerator;
+use Doctrine\ODM\MongoDB\Id\AutoGenerator;
+use Doctrine\ODM\MongoDB\Id\IncrementGenerator;
+use Doctrine\ODM\MongoDB\Id\UuidGenerator;
 
 /**
  * The ClassMetadataFactory is used to create ClassMetadata objects that contain all the
@@ -34,8 +38,6 @@ use Doctrine\ODM\MongoDB\Mapping\MappingException;
  * to a document database.
  *
  * @since       1.0
- * @author      Jonathan H. Wage <jonwage@gmail.com>
- * @author      Roman Borschel <roman@code-factory.org>
  */
 class ClassMetadataFactory extends AbstractClassMetadataFactory
 {
@@ -119,7 +121,7 @@ class ClassMetadataFactory extends AbstractClassMetadataFactory
      */
     protected function isEntity(ClassMetadataInterface $class)
     {
-        return ! $class->isMappedSuperclass && ! $class->isEmbeddedDocument;
+        return ! $class->isMappedSuperclass && ! $class->isEmbeddedDocument && ! $class->isQueryResultDocument;
     }
 
     /**
@@ -138,12 +140,14 @@ class ClassMetadataFactory extends AbstractClassMetadataFactory
             $this->addInheritedFields($class, $parent);
             $this->addInheritedRelations($class, $parent);
             $this->addInheritedIndexes($class, $parent);
+            $this->setInheritedShardKey($class, $parent);
             $class->setIdentifier($parent->identifier);
             $class->setVersioned($parent->isVersioned);
             $class->setVersionField($parent->versionField);
             $class->setLifecycleCallbacks($parent->lifecycleCallbacks);
             $class->setAlsoLoadMethods($parent->alsoLoadMethods);
             $class->setChangeTrackingPolicy($parent->changeTrackingPolicy);
+            $class->setWriteConcern($parent->writeConcern);
             $class->setFile($parent->getFile());
             if ($parent->isMappedSuperclass) {
                 $class->setCustomRepositoryClass($parent->customRepositoryClassName);
@@ -159,7 +163,7 @@ class ClassMetadataFactory extends AbstractClassMetadataFactory
 
         $this->validateIdentifier($class);
 
-        if ($parent && $rootEntityFound) {
+        if ($parent && $rootEntityFound && $parent->generatorType === $class->generatorType) {
             if ($parent->generatorType) {
                 $class->setIdGeneratorType($parent->generatorType);
             }
@@ -181,7 +185,7 @@ class ClassMetadataFactory extends AbstractClassMetadataFactory
         $class->setParentClasses($nonSuperclassParents);
 
         if ($this->evm->hasListeners(Events::loadClassMetadata)) {
-            $eventArgs = new \Doctrine\ODM\MongoDB\Event\LoadClassMetadataEventArgs($class, $this->dm);
+            $eventArgs = new LoadClassMetadataEventArgs($class, $this->dm);
             $this->evm->dispatchEvent(Events::loadClassMetadata, $eventArgs);
         }
     }
@@ -194,7 +198,7 @@ class ClassMetadataFactory extends AbstractClassMetadataFactory
      */
     protected function validateIdentifier($class)
     {
-        if ( ! $class->identifier && ! $class->isMappedSuperclass && ! $class->isEmbeddedDocument) {
+        if ( ! $class->identifier && ! $class->isMappedSuperclass && ! $class->isEmbeddedDocument && ! $class->isQueryResultDocument) {
             throw MappingException::identifierRequired($class->name);
         }
     }
@@ -215,10 +219,10 @@ class ClassMetadataFactory extends AbstractClassMetadataFactory
         $idGenOptions = $class->generatorOptions;
         switch ($class->generatorType) {
             case ClassMetadata::GENERATOR_TYPE_AUTO:
-                $class->setIdGenerator(new \Doctrine\ODM\MongoDB\Id\AutoGenerator($class));
+                $class->setIdGenerator(new AutoGenerator());
                 break;
             case ClassMetadata::GENERATOR_TYPE_INCREMENT:
-                $incrementGenerator = new \Doctrine\ODM\MongoDB\Id\IncrementGenerator($class);
+                $incrementGenerator = new IncrementGenerator();
                 if (isset($idGenOptions['key'])) {
                     $incrementGenerator->setKey($idGenOptions['key']);
                 }
@@ -228,12 +232,12 @@ class ClassMetadataFactory extends AbstractClassMetadataFactory
                 $class->setIdGenerator($incrementGenerator);
                 break;
             case ClassMetadata::GENERATOR_TYPE_UUID:
-                $uuidGenerator = new \Doctrine\ODM\MongoDB\Id\UuidGenerator($class);
+                $uuidGenerator = new UuidGenerator();
                 isset($idGenOptions['salt']) && $uuidGenerator->setSalt($idGenOptions['salt']);
                 $class->setIdGenerator($uuidGenerator);
                 break;
             case ClassMetadata::GENERATOR_TYPE_ALNUM:
-                $alnumGenerator = new \Doctrine\ODM\MongoDB\Id\AlnumGenerator($class);
+                $alnumGenerator = new AlnumGenerator();
                 if (isset($idGenOptions['pad'])) {
                     $alnumGenerator->setPad($idGenOptions['pad']);
                 }
@@ -252,7 +256,7 @@ class ClassMetadataFactory extends AbstractClassMetadataFactory
 
                 $customGenerator = new $idGenOptions['class'];
                 unset($idGenOptions['class']);
-                if ( ! $customGenerator instanceof \Doctrine\ODM\MongoDB\Id\AbstractIdGenerator) {
+                if ( ! $customGenerator instanceof AbstractIdGenerator) {
                     throw MappingException::classIsNotAValidGenerator(get_class($customGenerator));
                 }
 
@@ -270,7 +274,7 @@ class ClassMetadataFactory extends AbstractClassMetadataFactory
             case ClassMetadata::GENERATOR_TYPE_NONE;
                 break;
             default:
-                throw new MappingException("Unknown generator type: " . $class->generatorType);
+                throw new MappingException('Unknown generator type: ' . $class->generatorType);
         }
     }
 
@@ -300,8 +304,8 @@ class ClassMetadataFactory extends AbstractClassMetadataFactory
     /**
      * Adds inherited association mappings to the subclass mapping.
      *
-     * @param \Doctrine\ORM\Mapping\ClassMetadata $subClass
-     * @param \Doctrine\ORM\Mapping\ClassMetadata $parentClass
+     * @param \Doctrine\ODM\MongoDB\Mapping\ClassMetadata $subClass
+     * @param \Doctrine\ODM\MongoDB\Mapping\ClassMetadata $parentClass
      *
      * @return void
      *
@@ -334,6 +338,22 @@ class ClassMetadataFactory extends AbstractClassMetadataFactory
     {
         foreach ($parentClass->indexes as $index) {
             $subClass->addIndex($index['keys'], $index['options']);
+        }
+    }
+
+    /**
+     * Adds inherited shard key to the subclass mapping.
+     *
+     * @param ClassMetadata $subClass
+     * @param ClassMetadata $parentClass
+     */
+    private function setInheritedShardKey(ClassMetadata $subClass, ClassMetadata $parentClass)
+    {
+        if ($parentClass->isSharded()) {
+            $subClass->setShardKey(
+                $parentClass->shardKey['keys'],
+                $parentClass->shardKey['options']
+            );
         }
     }
 }

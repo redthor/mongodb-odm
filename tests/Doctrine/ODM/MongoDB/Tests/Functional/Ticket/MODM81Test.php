@@ -2,7 +2,6 @@
 
 namespace Doctrine\ODM\MongoDB\Tests\Functional\Ticket;
 
-use Doctrine\ODM\MongoDB\Events;
 use Doctrine\Common\Collections\ArrayCollection;
 use Doctrine\ODM\MongoDB\Mapping\Annotations as ODM;
 
@@ -65,7 +64,7 @@ class MODM81TestDocument
     /** @ODM\Id */
     protected $id;
 
-    /** @ODM\String */
+    /** @ODM\Field(type="string") */
     protected $name;
 
     /** @ODM\EmbedMany(targetDocument="MODM81TestEmbeddedDocument") */
@@ -116,7 +115,7 @@ class MODM81TestDocument
 /** @ODM\EmbeddedDocument */
 class MODM81TestEmbeddedDocument
 {
-    /** @ODM\String */
+    /** @ODM\Field(type="string") */
     public $message;
 
     /** @ODM\ReferenceOne(targetDocument="MODM81TestDocument") */

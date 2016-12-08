@@ -21,8 +21,7 @@ namespace Doctrine\ODM\MongoDB\Query;
 
 use Doctrine\MongoDB\Collection;
 use Doctrine\MongoDB\Cursor as BaseCursor;
-use Doctrine\MongoDB\EagerCursor as BaseEagerCursor;
-use Doctrine\MongoDB\Iterator;
+use Doctrine\MongoDB\CursorInterface;
 use Doctrine\ODM\MongoDB\Cursor;
 use Doctrine\ODM\MongoDB\DocumentManager;
 use Doctrine\ODM\MongoDB\EagerCursor;
@@ -34,7 +33,6 @@ use Doctrine\ODM\MongoDB\MongoDBException;
  * and to hydrate the raw arrays of data to Doctrine document objects.
  *
  * @since       1.0
- * @author      Jonathan H. Wage <jonwage@gmail.com>
  */
 class Query extends \Doctrine\MongoDB\Query\Query
 {
@@ -42,6 +40,7 @@ class Query extends \Doctrine\MongoDB\Query\Query
     const HINT_SLAVE_OKAY = 2;
     const HINT_READ_PREFERENCE = 3;
     const HINT_READ_PREFERENCE_TAGS = 4;
+    const HINT_READ_ONLY = 5;
 
     /**
      * The DocumentManager instance.
@@ -88,6 +87,8 @@ class Query extends \Doctrine\MongoDB\Query\Query
     /**
      * Constructor.
      *
+     * Please note that $requireIndexes was deprecated in 1.2 and will be removed in 2.0
+     *
      * @param DocumentManager $dm
      * @param ClassMetadata $class
      * @param Collection $collection
@@ -96,17 +97,29 @@ class Query extends \Doctrine\MongoDB\Query\Query
      * @param boolean $hydrate
      * @param boolean $refresh
      * @param array $primers
-     * @param null $requireIndexes
+     * @param null $requireIndexes deprecated
+     * @param boolean $readOnly
      */
-    public function __construct(DocumentManager $dm, ClassMetadata $class, Collection $collection, array $query = array(), array $options = array(), $hydrate = true, $refresh = false, array $primers = array(), $requireIndexes = null)
+    public function __construct(DocumentManager $dm, ClassMetadata $class, Collection $collection, array $query = array(), array $options = array(), $hydrate = true, $refresh = false, array $primers = array(), $requireIndexes = null, $readOnly = false)
     {
+        $primers = array_filter($primers);
+
+        if ( ! empty($primers)) {
+            $query['eagerCursor'] = true;
+        }
+
+        if ( ! empty($query['eagerCursor'])) {
+            $query['useIdentifierKeys'] = false;
+        }
+
         parent::__construct($collection, $query, $options);
         $this->dm = $dm;
         $this->class = $class;
         $this->hydrate = $hydrate;
-        $this->primers = array_filter($primers);
+        $this->primers = $primers;
         $this->requireIndexes = $requireIndexes;
 
+        $this->setReadOnly($readOnly);
         $this->setRefresh($refresh);
 
         if (isset($query['slaveOkay'])) {
@@ -150,6 +163,19 @@ class Query extends \Doctrine\MongoDB\Query\Query
     }
 
     /**
+     * Set whether documents should be registered in UnitOfWork. If document would
+     * already be managed it will be left intact and new instance returned.
+     * 
+     * This option has no effect if hydration is disabled.
+     * 
+     * @param boolean $readOnly
+     */
+    public function setReadOnly($readOnly)
+    {
+        $this->unitOfWorkHints[Query::HINT_READ_ONLY] = (boolean) $readOnly;
+    }
+
+    /**
      * Set whether to refresh hydrated documents that are already in the
      * identity map.
      *
@@ -166,6 +192,8 @@ class Query extends \Doctrine\MongoDB\Query\Query
      * Gets the fields involved in this query.
      *
      * @return array $fields An array of fields names used in this query.
+     *
+     * @deprecated method was deprecated in 1.2 and will be removed in 2.0
      */
     public function getFieldsInQuery()
     {
@@ -180,6 +208,8 @@ class Query extends \Doctrine\MongoDB\Query\Query
      * Check if this query is indexed.
      *
      * @return bool
+     *
+     * @deprecated method was deprecated in 1.2 and will be removed in 2.0
      */
     public function isIndexed()
     {
@@ -196,6 +226,8 @@ class Query extends \Doctrine\MongoDB\Query\Query
      * Gets an array of the unindexed fields in this query.
      *
      * @return array
+     *
+     * @deprecated method was deprecated in 1.2 and will be removed in 2.0
      */
     public function getUnindexedFields()
     {
@@ -278,24 +310,15 @@ class Query extends \Doctrine\MongoDB\Query\Query
      *
      * @see \Doctrine\MongoDB\Cursor::prepareCursor()
      * @param BaseCursor $cursor
-     * @return Cursor|EagerCursor
+     * @return CursorInterface
      */
     protected function prepareCursor(BaseCursor $cursor)
     {
         $cursor = parent::prepareCursor($cursor);
 
-        // Unwrap a base EagerCursor
-        if ($cursor instanceof BaseEagerCursor) {
-            $cursor = $cursor->getCursor();
-        }
-
         // Convert the base Cursor into an ODM Cursor
-        $cursor = new Cursor($cursor, $this->dm->getUnitOfWork(), $this->class);
-
-        // Wrap ODM Cursor with EagerCursor
-        if ( ! empty($this->query['eagerCursor'])) {
-            $cursor = new EagerCursor($cursor, $this->dm->getUnitOfWork(), $this->class);
-        }
+        $cursorClass = ( ! empty($this->query['eagerCursor'])) ? EagerCursor::class : Cursor::class;
+        $cursor = new $cursorClass($cursor, $this->dm->getUnitOfWork(), $this->class);
 
         $cursor->hydrate($this->hydrate);
         $cursor->setHints($this->unitOfWorkHints);

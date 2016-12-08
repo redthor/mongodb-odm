@@ -60,7 +60,7 @@ class User
     /** @ODM\Id */
     protected $id;
 
-    /** @ODM\String */
+    /** @ODM\Field(type="string") */
     protected $name;
 
     /**
@@ -107,7 +107,7 @@ class User
 /**
  * @ODM\Document(collection="companies")
  * @ODM\InheritanceType("SINGLE_COLLECTION")
- * @ODM\DiscriminatorField(fieldName="type")
+ * @ODM\DiscriminatorField("type")
  * @ODM\DiscriminatorMap({"seller"="SellerCompany", "buyer"="BuyerCompany"}) 
  */
 class Company

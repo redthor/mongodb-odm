@@ -25,8 +25,6 @@ namespace Doctrine\ODM\MongoDB;
  * This class cannot be instantiated.
  *
  * @since       1.0
- * @author      Jonathan H. Wage <jonwage@gmail.com>
- * @author      Roman Borschel <roman@code-factory.org>
  */
 final class Events
 {
@@ -163,4 +161,19 @@ final class Events
      * @var string
      */
     const onClear = 'onClear';
+
+    /**
+     * The documentNotFound event occurs if a proxy object could not be found in
+     * the database.
+     *
+     * @var string
+     */
+    const documentNotFound = 'documentNotFound';
+
+    /**
+     * The postCollectionLoad event occurs after collection is initialized (loaded).
+     *
+     * @var string
+     */
+    const postCollectionLoad = 'postCollectionLoad';
 }

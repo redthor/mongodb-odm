@@ -3,8 +3,6 @@
 namespace Doctrine\ODM\MongoDB\Tests\Mapping;
 
 use Doctrine\ODM\MongoDB\Mapping\ClassMetadata;
-use Doctrine\ODM\MongoDB\Mapping\Driver\XmlDriver;
-use Doctrine\ODM\MongoDB\Mapping\Driver\YamlDriver;
 use Doctrine\ODM\MongoDB\Mapping\Annotations as ODM;
 
 abstract class AbstractMappingDriverTest extends \Doctrine\ODM\MongoDB\Tests\BaseTest
@@ -38,14 +36,26 @@ abstract class AbstractMappingDriverTest extends \Doctrine\ODM\MongoDB\Tests\Bas
      * @depends testDocumentCollectionNameAndInheritance
      * @param ClassMetadata $class
      */
+    public function testDocumentLevelWriteConcern($class)
+    {
+        $this->assertEquals(1, $class->getWriteConcern());
+
+        return $class;
+    }
+
+    /**
+     * @depends testDocumentLevelWriteConcern
+     * @param ClassMetadata $class
+     */
     public function testFieldMappings($class)
     {
-        $this->assertEquals(13, count($class->fieldMappings));
+        $this->assertEquals(14, count($class->fieldMappings));
         $this->assertTrue(isset($class->fieldMappings['id']));
         $this->assertTrue(isset($class->fieldMappings['version']));
         $this->assertTrue(isset($class->fieldMappings['lock']));
         $this->assertTrue(isset($class->fieldMappings['name']));
         $this->assertTrue(isset($class->fieldMappings['email']));
+        $this->assertTrue(isset($class->fieldMappings['roles']));
 
         return $class;
     }
@@ -141,7 +151,7 @@ abstract class AbstractMappingDriverTest extends \Doctrine\ODM\MongoDB\Tests\Bas
      */
     public function testAssocations($class)
     {
-        $this->assertEquals(13, count($class->fieldMappings));
+        $this->assertEquals(14, count($class->fieldMappings));
 
         return $class;
     }
@@ -301,32 +311,56 @@ abstract class AbstractMappingDriverTest extends \Doctrine\ODM\MongoDB\Tests\Bas
         $this->assertTrue(isset($indexes[1]['options']['dropDups']));
         $this->assertEquals(true, $indexes[1]['options']['dropDups']);
 
-        $this->assertTrue(isset($indexes[2]['keys']['mysqlProfileId']));
-        $this->assertEquals(-1, $indexes[2]['keys']['mysqlProfileId']);
+        $this->assertTrue(isset($indexes[2]['keys']['lock']));
+        $this->assertEquals(1, $indexes[2]['keys']['lock']);
         $this->assertTrue( ! empty($indexes[2]['options']));
-        $this->assertTrue(isset($indexes[2]['options']['unique']));
-        $this->assertEquals(true, $indexes[2]['options']['unique']);
-        $this->assertTrue(isset($indexes[2]['options']['dropDups']));
-        $this->assertEquals(true, $indexes[2]['options']['dropDups']);
+        $this->assertTrue(isset($indexes[2]['options']['partialFilterExpression']));
+        $this->assertSame(array('version' => array('$gt' => 1), 'discr' => array('$eq' => 'default')), $indexes[2]['options']['partialFilterExpression']);
 
-        $this->assertTrue(isset($indexes[3]['keys']['username']));
-        $this->assertEquals(-1, $indexes[3]['keys']['username']);
+        $this->assertTrue(isset($indexes[3]['keys']['mysqlProfileId']));
+        $this->assertEquals(-1, $indexes[3]['keys']['mysqlProfileId']);
+        $this->assertTrue( ! empty($indexes[3]['options']));
         $this->assertTrue(isset($indexes[3]['options']['unique']));
         $this->assertEquals(true, $indexes[3]['options']['unique']);
         $this->assertTrue(isset($indexes[3]['options']['dropDups']));
-        $this->assertEquals(false, $indexes[3]['options']['dropDups']);
+        $this->assertEquals(true, $indexes[3]['options']['dropDups']);
+
+        $this->assertTrue(isset($indexes[4]['keys']['username']));
+        $this->assertEquals(-1, $indexes[4]['keys']['username']);
+        $this->assertTrue(isset($indexes[4]['options']['unique']));
+        $this->assertEquals(true, $indexes[4]['options']['unique']);
+        $this->assertTrue(isset($indexes[4]['options']['dropDups']));
+        $this->assertEquals(false, $indexes[4]['options']['dropDups']);
 
         return $class;
+    }
+
+    /**
+     * @depends testIndexes
+     * @param ClassMetadata $class
+     */
+    public function testShardKey($class)
+    {
+        $shardKey = $class->getShardKey();
+
+        $this->assertTrue(isset($shardKey['keys']['name']), 'Shard key is not mapped');
+        $this->assertEquals(1, $shardKey['keys']['name'], 'Wrong value for shard key');
+
+        $this->assertTrue(isset($shardKey['options']['unique']), 'Shard key option is not mapped');
+        $this->assertTrue($shardKey['options']['unique'], 'Shard key option has wrong value');
+        $this->assertTrue(isset($shardKey['options']['numInitialChunks']), 'Shard key option is not mapped');
+        $this->assertEquals(4096, $shardKey['options']['numInitialChunks'], 'Shard key option has wrong value');
     }
 }
 
 /**
- * @ODM\Document(collection="cms_users")
- * @ODM\DiscriminatorField(fieldName="discr")
+ * @ODM\Document(collection="cms_users", writeConcern=1)
+ * @ODM\DiscriminatorField("discr")
  * @ODM\DiscriminatorMap({"default"="Doctrine\ODM\MongoDB\Tests\Mapping\AbstractMappingDriverUser"})
  * @ODM\DefaultDiscriminatorValue("default")
  * @ODM\HasLifecycleCallbacks
- * @ODM\Indexes(@ODM\Index(keys={"createdAt"="asc"},expireAfterSeconds=3600))
+ * @ODM\Indexes(@ODM\Index(keys={"createdAt"="asc"},expireAfterSeconds=3600),@ODM\Index(keys={"lock"="asc"},partialFilterExpression={"version"={"$gt"=1},"discr"={"$eq"="default"}}))
+ * @ODM\ShardKey(keys={"name"="asc"},unique=true,numInitialChunks=4096)
  */
 class AbstractMappingDriverUser
 {
@@ -337,30 +371,30 @@ class AbstractMappingDriverUser
 
     /**
      * @ODM\Version
-     * @ODM\Int
+     * @ODM\Field(type="int")
      */
     public $version;
 
     /**
      * @ODM\Lock
-     * @ODM\Int
+     * @ODM\Field(type="int")
      */
     public $lock;
 
     /**
-     * @ODM\String(name="username")
+     * @ODM\Field(name="username", type="string")
      * @ODM\UniqueIndex(order="desc", dropDups=false)
      */
     public $name;
 
     /**
-     * @ODM\String
+     * @ODM\Field(type="string")
      * @ODM\UniqueIndex(order="desc", dropDups=true)
      */
     public $email;
 
     /**
-     * @ODM\Int
+     * @ODM\Field(type="int")
      * @ODM\UniqueIndex(order="desc", dropDups=true)
      */
     public $mysqlProfileId;
@@ -371,7 +405,7 @@ class AbstractMappingDriverUser
     public $address;
 
     /**
-     * @ODM\ReferenceMany(targetDocument="Phonenumber", cascade={"persist"}, discriminatorField="discr", discriminatorMap={"home"="HomePhonenumber", "work"="WorkPhonenumber"}, defaultDiscriminatorValue="home")
+     * @ODM\ReferenceMany(targetDocument="Phonenumber", collectionClass="PhonenumberCollection", cascade={"persist"}, discriminatorField="discr", discriminatorMap={"home"="HomePhonenumber", "work"="WorkPhonenumber"}, defaultDiscriminatorValue="home")
      */
     public $phonenumbers;
 
@@ -381,7 +415,7 @@ class AbstractMappingDriverUser
     public $groups;
 
     /**
-     * @ODM\ReferenceMany(targetDocument="Phonenumber", name="more_phone_numbers")
+     * @ODM\ReferenceMany(targetDocument="Phonenumber", collectionClass="PhonenumberCollection", name="more_phone_numbers")
      */
     public $morePhoneNumbers;
 
@@ -396,9 +430,14 @@ class AbstractMappingDriverUser
     public $otherPhonenumbers;
 
     /**
-     * @ODM\Date
+     * @ODM\Field(type="date")
      */
     public $createdAt;
+
+    /**
+     * @ODM\Field(type="collection")
+     */
+    public $roles = array();
 
     /**
      * @ODM\PrePersist
@@ -470,6 +509,7 @@ class AbstractMappingDriverUser
         $metadata->mapManyReference(array(
             'fieldName' => 'phonenumbers',
             'targetDocument' => 'Doctrine\\ODM\\MongoDB\\Tests\\Mapping\\Phonenumber',
+            'collectionClass' => 'Doctrine\\ODM\\MongoDB\\Tests\\Mapping\\PhonenumberCollection',
             'cascade' => array(1 => 'persist'),
             'discriminatorField' => 'discr',
             'discriminatorMap' => array(
@@ -482,6 +522,7 @@ class AbstractMappingDriverUser
             'fieldName' => 'morePhoneNumbers',
             'name' => 'more_phone_numbers',
             'targetDocument' => 'Doctrine\\ODM\\MongoDB\\Tests\\Mapping\\Phonenumber',
+            'collectionClass' => 'Doctrine\\ODM\\MongoDB\\Tests\\Mapping\\PhonenumberCollection',
         ));
         $metadata->mapManyReference(array(
             'fieldName' => 'groups',
@@ -512,5 +553,6 @@ class AbstractMappingDriverUser
         $metadata->addIndex(array('email' => 'desc'), array('unique' => true, 'dropDups' => true));
         $metadata->addIndex(array('mysqlProfileId' => 'desc'), array('unique' => true, 'dropDups' => true));
         $metadata->addIndex(array('createdAt' => 'asc'), array('expireAfterSeconds' => 3600));
+        $metadata->setShardKey(array('name' => 'asc'), array('unique' => true, 'numInitialChunks' => 4096));
     }
 }

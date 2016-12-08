@@ -4,7 +4,6 @@ namespace Doctrine\ODM\MongoDB\Tests\Functional\Ticket;
 
 use Doctrine\Common\EventSubscriber;
 use Doctrine\ODM\MongoDB\Events;
-use Doctrine\ODM\MongoDB\Event\LifecycleEventArgs;
 use Doctrine\ODM\MongoDB\Mapping\Annotations as ODM;
 
 class GH560Test extends \Doctrine\ODM\MongoDB\Tests\BaseTest
@@ -113,7 +112,7 @@ class GH560Document
     /** @ODM\Id(strategy="NONE") */
     public $id;
 
-    /** @ODM\String */
+    /** @ODM\Field(type="string") */
     public $name;
 
     public function __construct($id, $name)

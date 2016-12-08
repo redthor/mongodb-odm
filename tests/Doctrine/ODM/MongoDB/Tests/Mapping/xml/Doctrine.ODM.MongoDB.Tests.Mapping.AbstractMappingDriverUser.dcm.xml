@@ -5,7 +5,7 @@
                   xsi:schemaLocation="http://doctrine-project.org/schemas/odm/doctrine-mongo-mapping
                   http://doctrine-project.org/schemas/odm/doctrine-mongo-mapping.xsd">
 
-    <document name="Doctrine\ODM\MongoDB\Tests\Mapping\AbstractMappingDriverUser" collection="cms_users">
+    <document name="Doctrine\ODM\MongoDB\Tests\Mapping\AbstractMappingDriverUser" collection="cms_users" writeConcern="1">
         <discriminator-field name="discr" />
         <discriminator-map>
             <discriminator-mapping value="default" class="Doctrine\ODM\MongoDB\Tests\Mapping\AbstractMappingDriverUser" />
@@ -18,6 +18,7 @@
         <field fieldName="email" type="string" unique="true" drop-dups="true" order="desc" />
         <field fieldName="mysqlProfileId" type="integer" unique="true" drop-dups="true" order="desc" />
         <field fieldName="createdAt" type="date" />
+        <field fieldName="roles" type="collection" />
         <indexes>
             <index unique="true">
                 <key name="username" order="desc" />
@@ -27,13 +28,20 @@
                 <key name="createdAt" order="asc" />
                 <option name="expireAfterSeconds" value="3600" />
             </index>
+            <index>
+                <key name="lock" order="asc" />
+                <partial-filter-expression>
+                    <field name="version" value="1" operator="gt" />
+                    <field name="discr" operator="eq" value="default" />
+                </partial-filter-expression>
+            </index>
         </indexes>
         <reference-one target-document="Address" field="address">
             <cascade>
                 <remove />
             </cascade>
         </reference-one>
-        <reference-many target-document="Phonenumber" field="phonenumbers">
+        <reference-many target-document="Phonenumber" collection-class="PhonenumberCollection" field="phonenumbers">
             <cascade>
                 <persist />
             </cascade>
@@ -53,7 +61,7 @@
         </reference-many>
         <embed-one target-document="Phonenumber" fieldName="embeddedPhonenumber" field="embedded_phone_number">
         </embed-one>
-        <embed-many target-document="Phonenumber" field="otherPhonenumbers">
+        <embed-many target-document="Phonenumber" collection-class="PhonenumberCollection" field="otherPhonenumbers">
             <discriminator-field name="discr" />
             <discriminator-map>
                 <discriminator-mapping value="home" class="HomePhonenumber" />
@@ -66,5 +74,10 @@
             <lifecycle-callback method="doOtherStuffOnPrePersistToo" type="prePersist" />
             <lifecycle-callback method="doStuffOnPostPersist" type="postPersist" />
         </lifecycle-callbacks>
+        <shard-key>
+            <key name="name" order="asc"/>
+            <option name="unique" value="true"/>
+            <option name="numInitialChunks" value="4096"/>
+        </shard-key>
     </document>
 </doctrine-mongo-mapping>

@@ -19,6 +19,7 @@
 
 namespace Doctrine\ODM\MongoDB\Tools\Console\Command\ClearCache;
 
+use Doctrine\Common\Cache\ApcCache;
 use Symfony\Component\Console\Command\Command;
 use Symfony\Component\Console\Input\InputInterface;
 use Symfony\Component\Console\Output\OutputInterface;
@@ -28,11 +29,6 @@ use Symfony\Component\Console\Output\OutputInterface;
  *
  * @since   1.0
  * @version $Revision$
- * @author  Benjamin Eberlei <kontakt@beberlei.de>
- * @author  Guilherme Blanco <guilhermeblanco@hotmail.com>
- * @author  Jonathan Wage <jonwage@gmail.com>
- * @author  Roman Borschel <roman@code-factory.org>
- * @author  Henrik Westphal <henrik.westphal@gmail.com>
  */
 class MetadataCommand extends Command
 {
@@ -63,7 +59,7 @@ EOT
             throw new \InvalidArgumentException('No Metadata cache driver is configured on given DocumentManager.');
         }
 
-        if ($cacheDriver instanceof \Doctrine\Common\Cache\ApcCache) {
+        if ($cacheDriver instanceof ApcCache) {
             throw new \LogicException("Cannot clear APC Cache from Console, its shared in the Webserver memory and not accessible from the CLI.");
         }
 

@@ -21,11 +21,17 @@ namespace Doctrine\ODM\MongoDB\Mapping\Annotations;
 
 use Doctrine\Common\Annotations\Annotation;
 
-/** @Annotation */
+/**
+ * Specify a field name to store a discriminator value
+ *
+ * @Annotation
+ */
 final class DiscriminatorField extends Annotation
 {
     /**
      * Available for BC, but AnnotationDriver will consider $value first.
+     *
+     * @deprecated property was deprecated in 1.2 and will be removed in 2.0
      */
     public $name;
 
@@ -33,7 +39,7 @@ final class DiscriminatorField extends Annotation
      * Available for BC, but AnnotationDriver will consider $name and $value
      * first.
      *
-     * @deprecated
+     * @deprecated property was deprecated in 1.0.0-BETA10 and will be removed in 2.0
      */
     public $fieldName;
 }

@@ -13,7 +13,7 @@ Doctrine MongoDB ODM don't panic. You can get help from different sources:
 -  The `Doctrine Mailing List <http://groups.google.com/group/doctrine-user>`_
 -  Internet Relay Chat (IRC) in `#doctrine on Freenode <irc://irc.freenode.net/doctrine>`_
 -  Report a bug on `GitHub <https://github.com/doctrine/mongodb-odm/issues>`_.
--  On `StackOverflow <http://stackoverflow.com/questions/tagged/doctrine-mongodb>`_
+-  On `StackOverflow <http://stackoverflow.com/questions/tagged/doctrine-odm>`_
 
 Getting Started
 ---------------
@@ -56,6 +56,7 @@ Working with Objects
 
 * **Query Reference**:
   :doc:`Query Builder API <reference/query-builder-api>` |
+  :doc:`Aggregation Pipeline queries <reference/aggregation-builder>` |
   :doc:`Geo Spatial Queries <reference/geospatial-queries>` |
   :doc:`Slave Okay Queries <reference/slave-okay-queries>` |
   :doc:`Find and Update <reference/find-and-update>` |
@@ -67,9 +68,11 @@ Working with Objects
 Advanced Topics
 ---------------
 
-* **Collections**
+* **Collections**:
   :doc:`Capped Collections <reference/capped-collections>` |
-  :doc:`Collection Strategies <reference/collection-strategies>`
+  :doc:`Storage Strategies <reference/storage-strategies>` |
+  :doc:`Custom Collections <reference/custom-collections>` |
+  :doc:`Sharded setups <reference/sharding>`
 
 * **Best Practices**:
   :doc:`Best Practices <reference/best-practices>`

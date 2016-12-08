@@ -2,7 +2,6 @@
 
 namespace Documents;
 
-use Doctrine\ODM\MongoDB\Mapping\ClassMetadata;
 use Doctrine\ODM\MongoDB\Mapping\Annotations as ODM;
 
 /** @ODM\Document */
@@ -11,13 +10,13 @@ class File
     /** @ODM\Id */
     private $id;
 
-    /** @ODM\String */
+    /** @ODM\Field(type="string") */
     private $name;
 
     /** @ODM\File */
     private $file;
 
-    /** @ODM\String */
+    /** @ODM\Field(type="string") */
     private $filename;
 
     /** @ODM\NotSaved(type="int") */

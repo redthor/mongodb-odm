@@ -2,17 +2,20 @@
 
 namespace Doctrine\ODM\MongoDB\Tests\Functional;
 
-use Doctrine\Common\Collections\ArrayCollection;
 use Doctrine\ODM\MongoDB\DocumentManager;
 use Doctrine\ODM\MongoDB\Mapping\ClassMetadata;
 use Doctrine\ODM\MongoDB\Query\Query;
 use Documents\Account;
 use Documents\Agent;
+use Documents\Functional\EmbeddedWhichReferences;
+use Documents\Functional\EmbedNamed;
 use Documents\Functional\FavoritesUser;
+use Documents\Functional\Reference;
 use Documents\Group;
 use Documents\GuestServer;
 use Documents\Phonenumber;
 use Documents\Project;
+use Documents\ReferenceUser;
 use Documents\SimpleReferenceUser;
 use Documents\User;
 use Documents\Ecommerce\ConfigurableProduct;
@@ -77,6 +80,15 @@ class ReferencePrimerTest extends \Doctrine\ODM\MongoDB\Tests\BaseTest
         $this->dm->createQueryBuilder('Documents\User')
             ->field('account')
             ->prime(true)
+            ->eagerCursor(false);
+    }
+
+    public function testFieldPrimingCanBeToggled()
+    {
+        $this->dm->createQueryBuilder('Documents\User')
+            ->field('account')
+            ->prime(true)
+            ->prime(false)
             ->eagerCursor(false);
     }
 
@@ -151,6 +163,150 @@ class ReferencePrimerTest extends \Doctrine\ODM\MongoDB\Tests\BaseTest
             $this->assertCount(2, $simpleUser->getUsers());
 
             foreach ($simpleUser->getUsers() as $user) {
+                $this->assertNotInstanceOf('Doctrine\ODM\MongoDB\Proxy\Proxy', $user);
+                $this->assertInstanceOf('Documents\User', $user);
+            }
+        }
+    }
+
+    /**
+     * @group current
+     */
+    public function testPrimeReferencesNestedInNamedEmbeddedReference()
+    {
+        $root = new EmbedNamed();
+
+        $root->embeddedDoc    = ($embedded1 = new EmbeddedWhichReferences());
+        $root->embeddedDocs[] = ($embedded2 = new EmbeddedWhichReferences());
+        $root->embeddedDocs[] = ($embedded3 = new EmbeddedWhichReferences());
+
+        $embedded1->referencedDoc    = ($referenced11 = new Reference());
+        $embedded1->referencedDocs[] = ($referenced12 = new Reference());
+        $embedded1->referencedDocs[] = ($referenced13 = new Reference());
+
+        $embedded2->referencedDoc    = ($referenced21 = new Reference());
+        $embedded2->referencedDocs[] = ($referenced22 = new Reference());
+        $embedded2->referencedDocs[] = ($referenced23 = new Reference());
+
+        $embedded3->referencedDoc    = ($referenced31 = new Reference());
+        $embedded3->referencedDocs[] = ($referenced32 = new Reference());
+        $embedded3->referencedDocs[] = ($referenced33 = new Reference());
+
+        $this->dm->persist($referenced33);
+        $this->dm->persist($referenced32);
+        $this->dm->persist($referenced31);
+        $this->dm->persist($referenced23);
+        $this->dm->persist($referenced22);
+        $this->dm->persist($referenced21);
+        $this->dm->persist($referenced13);
+        $this->dm->persist($referenced12);
+        $this->dm->persist($referenced11);
+        $this->dm->persist($embedded3);
+        $this->dm->persist($embedded2);
+        $this->dm->persist($embedded1);
+        $this->dm->persist($root);
+        $this->dm->flush();
+        $this->dm->clear();
+
+        $qb = $this->dm->createQueryBuilder('Documents\Functional\EmbedNamed')
+            ->field('embeddedDoc.referencedDoc')->prime(true)
+            ->field('embeddedDoc.referencedDocs')->prime(true)
+            ->field('embeddedDocs.referencedDoc')->prime(true)
+            ->field('embeddedDocs.referencedDocs')->prime(true)
+        ;
+
+        foreach ($qb->getQuery() as $root) {
+            $this->assertNotInstanceOf('Doctrine\ODM\MongoDB\Proxy\Proxy', $root->embeddedDoc);
+            $this->assertInstanceOf('Documents\Functional\EmbeddedWhichReferences', $root->embeddedDoc);
+
+            $this->assertCount(2, $root->embeddedDocs);
+            foreach ($root->embeddedDocs as $embeddedDoc) {
+                $this->assertNotInstanceOf('Doctrine\ODM\MongoDB\Proxy\Proxy', $embeddedDoc);
+                $this->assertInstanceOf('Documents\Functional\EmbeddedWhichReferences', $embeddedDoc);
+
+                $this->assertInstanceOf('Doctrine\ODM\MongoDB\Proxy\Proxy', $embeddedDoc->referencedDoc);
+                $this->assertTrue($embeddedDoc->referencedDoc->__isInitialized());
+
+                $this->assertCount(2, $embeddedDoc->referencedDocs);
+                foreach ($embeddedDoc->referencedDocs as $referencedDoc) {
+                    $this->assertNotInstanceOf('Doctrine\ODM\MongoDB\Proxy\Proxy', $referencedDoc);
+                    $this->assertInstanceOf('Documents\Functional\Reference', $referencedDoc);
+                }
+            }
+        }
+    }
+
+    public function testPrimeReferencesWithDifferentStoreAsReferences()
+    {
+        $referenceUser = new ReferenceUser();
+        $this->dm->persist($referenceUser);
+
+        $user1 = new User();
+        $this->dm->persist($user1);
+        $referenceUser->setUser($user1);
+
+        $user2 = new User();
+        $this->dm->persist($user2);
+        $referenceUser->addUser($user2);
+
+        $parentUser1 = new User();
+        $this->dm->persist($parentUser1);
+        $referenceUser->setParentUser($parentUser1);
+
+        $parentUser2 = new User();
+        $this->dm->persist($parentUser2);
+        $referenceUser->addParentUser($parentUser2);
+
+        $otherUser1 = new User();
+        $this->dm->persist($otherUser1);
+        $referenceUser->setOtherUser($otherUser1);
+
+        $otherUser2 = new User();
+        $this->dm->persist($otherUser2);
+        $referenceUser->addOtherUser($otherUser2);
+
+        $this->dm->flush();
+        $this->dm->clear();
+
+        $qb = $this->dm->createQueryBuilder('Documents\ReferenceUser')
+            ->field('user')->prime(true)
+            ->field('users')->prime(true)
+            ->field('parentUser')->prime(true)
+            ->field('parentUsers')->prime(true)
+            ->field('otherUser')->prime(true)
+            ->field('otherUsers')->prime(true);
+
+        /** @var ReferenceUser $referenceUser */
+        foreach ($qb->getQuery() as $referenceUser) {
+            // storeAs=id reference
+            $this->assertInstanceOf('Doctrine\ODM\MongoDB\Proxy\Proxy', $referenceUser->getUser());
+            $this->assertTrue($referenceUser->getUser()->__isInitialized());
+
+            $this->assertCount(1, $referenceUser->getUsers());
+
+            foreach ($referenceUser->getUsers() as $user) {
+                $this->assertNotInstanceOf('Doctrine\ODM\MongoDB\Proxy\Proxy', $user);
+                $this->assertInstanceOf('Documents\User', $user);
+            }
+
+            // storeAs=dbRef reference
+            $this->assertInstanceOf('Doctrine\ODM\MongoDB\Proxy\Proxy', $referenceUser->getParentUser());
+            $this->assertTrue($referenceUser->getParentUser()->__isInitialized());
+
+            $this->assertCount(1, $referenceUser->getParentUsers());
+
+            foreach ($referenceUser->getParentUsers() as $user) {
+                $this->assertNotInstanceOf('Doctrine\ODM\MongoDB\Proxy\Proxy', $user);
+                $this->assertInstanceOf('Documents\User', $user);
+            }
+
+            // storeAs=dbRefWithDb reference
+            $this->assertInstanceOf('Doctrine\ODM\MongoDB\Proxy\Proxy', $referenceUser->getOtherUser());
+            $this->assertTrue($referenceUser->getOtherUser()->__isInitialized());
+
+            $this->assertCount(1, $referenceUser->getOtherUsers());
+
+            foreach ($referenceUser->getOtherUsers() as $user) {
                 $this->assertNotInstanceOf('Doctrine\ODM\MongoDB\Proxy\Proxy', $user);
                 $this->assertInstanceOf('Documents\User', $user);
             }
@@ -237,6 +393,9 @@ class ReferencePrimerTest extends \Doctrine\ODM\MongoDB\Tests\BaseTest
         $this->assertEquals(0, $invoked, 'Primer was not invoked when all references were already managed.');
     }
 
+    /**
+     * @group replication_lag
+     */
     public function testPrimeReferencesInvokesPrimer()
     {
         $group1 = new Group();

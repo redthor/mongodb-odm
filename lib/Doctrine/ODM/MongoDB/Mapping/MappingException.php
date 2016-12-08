@@ -25,7 +25,6 @@ use Doctrine\Common\Persistence\Mapping\MappingException as BaseMappingException
  * Class for all exceptions related to the Doctrine MongoDB ODM
  *
  * @since       1.0
- * @author      Jonathan H. Wage <jonwage@gmail.com>
  */
 class MappingException extends BaseMappingException
 {
@@ -55,6 +54,47 @@ class MappingException extends BaseMappingException
     public static function mappingNotFound($className, $fieldName)
     {
         return new self("No mapping found for field '$fieldName' in class '$className'.");
+    }
+
+    /**
+     * @param string $className
+     * @param string $fieldName
+     * @return MappingException
+     */
+    public static function referenceMappingNotFound($className, $fieldName)
+    {
+        return new self("No reference mapping found for field '$fieldName' in class '$className'.");
+    }
+
+    /**
+     * @param string $className
+     * @param string $fieldName
+     * @return MappingException
+     */
+    public static function mappingNotFoundInClassNorDescendants($className, $fieldName)
+    {
+        return new self("No mapping found for field '$fieldName' in class '$className' nor its descendants.");
+    }
+
+    /**
+     * @param $fieldName
+     * @param $className
+     * @param $className2
+     * @return MappingException
+     */
+    public static function referenceFieldConflict($fieldName, $className, $className2)
+    {
+        return new self("Reference mapping for field '$fieldName' in class '$className' conflicts with one mapped in class '$className2'.");
+    }
+
+    /**
+     * @param string $className
+     * @param string $dbFieldName
+     * @return MappingException
+     */
+    public static function mappingNotFoundByDbName($className, $dbFieldName)
+    {
+        return new self("No mapping found for field by DB name '$dbFieldName' in class '$className'.");
     }
 
     /**
@@ -89,7 +129,7 @@ class MappingException extends BaseMappingException
     {
         return new self(
             "Document class '$className' used in the discriminator map of class '$owningClass' " .
-            "does not exist."
+            'does not exist.'
         );
     }
 
@@ -144,7 +184,7 @@ class MappingException extends BaseMappingException
     public static function identifierRequired($documentName)
     {
         return new self("No identifier/primary key specified for Document '$documentName'."
-            . " Every Document must have an identifier/primary key.");
+            . ' Every Document must have an identifier/primary key.');
     }
 
     /**
@@ -242,6 +282,107 @@ class MappingException extends BaseMappingException
      */
     public static function mustNotChangeIdentifierFieldsType($className, $fieldName)
     {
-        return new self("You must not change identifier field's type: $className::$fieldName");
+        return new self("$className::$fieldName was declared an identifier and must stay this way.");
+    }
+
+    /**
+     * @param string $className
+     * @param string $fieldName
+     * @param string $strategy
+     * @return MappingException
+     */
+    public static function referenceManySortMustNotBeUsedWithNonSetCollectionStrategy($className, $fieldName, $strategy)
+    {
+        return new self("ReferenceMany's sort can not be used with addToSet and pushAll strategies, $strategy used in $className::$fieldName");
+    }
+
+    /**
+     * @param string $className
+     * @param string $fieldName
+     * @param string $type
+     * @param string $strategy
+     * @return MappingException
+     */
+    public static function invalidStorageStrategy($className, $fieldName, $type, $strategy)
+    {
+        return new self("Invalid strategy $strategy used in $className::$fieldName with type $type");
+    }
+
+    /**
+     * @param string $className
+     * @param string $fieldName
+     * @param string $collectionClass
+     * @return MappingException
+     */
+    public static function collectionClassDoesNotImplementCommonInterface($className, $fieldName, $collectionClass)
+    {
+        return new self("$collectionClass used as custom collection class for $className::$fieldName has to implement Doctrine\\Common\\Collections\\Collection interface.");
+    }
+
+    /**
+     * @param $subclassName
+     * @return MappingException
+     */
+    public static function shardKeyInSingleCollInheritanceSubclass($subclassName)
+    {
+        return new self("Shard key overriding in subclass is forbidden for single collection inheritance: $subclassName");
+    }
+
+    /**
+     * @param $className
+     * @return MappingException
+     */
+    public static function embeddedDocumentCantHaveShardKey($className)
+    {
+        return new self("Embedded document can't have shard key: $className");
+    }
+
+    /**
+     * @param string $className
+     * @param string $fieldName
+     * @return MappingException
+     */
+    public static function onlySetStrategyAllowedInShardKey($className, $fieldName)
+    {
+        return new self("Only fields using the SET strategy can be used in the shard key: $className::$fieldName");
+    }
+
+    /**
+     * @param $className
+     * @param $fieldName
+     * @return MappingException
+     */
+    public static function noMultiKeyShardKeys($className, $fieldName)
+    {
+        return new self("No multikey indexes are allowed in the shard key: $className::$fieldName");
+    }
+
+    /**
+     * @param string $className
+     * @param string $fieldName
+     * @return MappingException
+     */
+    public static function cannotLookupNonIdReference($className, $fieldName)
+    {
+        return new self("Cannot use reference '$fieldName' in class '$className' for lookup. Only ID references are allowed in \$lookup stages.");
+    }
+
+    /**
+     * @param string $className
+     * @param string $fieldName
+     * @return MappingException
+     */
+    public static function repositoryMethodLookupNotAllowed($className, $fieldName)
+    {
+        return new self("Cannot use reference '$fieldName' in class '$className' for lookup. repositoryMethod is not supported in \$lookup stages.");
+    }
+
+    /**
+     * @param string $className
+     * @return MappingException
+     */
+    public static function cannotUseShardedCollectionInOutStage($className)
+    {
+        return new self("Cannot use class '$className' as collection for out stage. Sharded collections are not allowed.");
     }
 }

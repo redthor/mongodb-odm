@@ -28,8 +28,6 @@ use Doctrine\Common\Collections\Expr\Value;
  * Converts Collection expressions to query expressions.
  *
  * @since  1.0
- * @author Michaël Gallego <mic.gallego@gmail.com>
- * @author Jeremy Mikola <jmikola@gmail.com>
  */
 class QueryExpressionVisitor extends ExpressionVisitor
 {
@@ -117,7 +115,7 @@ class QueryExpressionVisitor extends ExpressionVisitor
      * Converts a composite expression into the target query language output.
      *
      * @see ExpressionVisitor::walkCompositeExpression()
-     * @param CompositeExpression $expr
+     * @param CompositeExpression $compositeExpr
      * @return \Doctrine\ODM\MongoDB\Query\Expr
      */
     public function walkCompositeExpression(CompositeExpression $compositeExpr)
